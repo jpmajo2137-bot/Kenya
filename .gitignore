@@ -1,0 +1,99 @@
+# =========================================
+# K-Kiswahili-Words .gitignore
+# =========================================
+
+# Environment variables (민감한 키 보호)
+.env
+.env.local
+.env.*.local
+*.env
+
+# API Keys & Credentials (중요!)
+gcp-tts-key.json
+*.keystore
+*.jks
+keystore/
+google-services.json
+
+# Logs
+logs/
+*.log
+*-log.txt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Export folder (큰 파일들)
+export/
+
+# Android Build
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+*.apk
+*.aab
+
+# iOS Build (향후 사용)
+ios/App/Pods/
+ios/App/build/
+*.xcworkspace
+*.xcuserdata
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+
+# PWA generated
+sw.js
+workbox-*.js
+
+# Data files (선택적)
+data/
+
+# Zip files
+*.zip

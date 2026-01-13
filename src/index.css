@@ -1,0 +1,212 @@
+@import "tailwindcss";
+
+:root {
+  /* 배경은 어두움 유지 */
+  --bg0: 9 12 20;
+  --bg1: 7 10 18;
+  /* ★★ 위젯/배너는 확실히 밝게 (배경과 크게 대비) ★★ */
+  --panel: 60 70 95; /* widgets/cards - 밝은 슬레이트 */
+  --panel2: 75 90 120; /* banners/nav - 더 밝은 블루그레이 */
+  --border: 120 140 175; /* border */
+
+  --text: 243 244 246; /* near-white */
+  --muted: 156 163 175; /* gray-400 */
+
+  --purple: 122 62 255; /* accent */
+  --green: 34 197 94; /* neon-ish */
+  --orange: 249 115 22;
+
+  /* Safe area insets (노치, 홈 인디케이터 등) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+html {
+  height: 100%;
+  background-color: rgb(var(--bg1));
+  /* iOS 스크롤 바운스 색상 */
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100%;
+  min-height: 100dvh; /* 동적 뷰포트 높이 (모바일 주소창 고려) */
+  margin: 0;
+  color: rgb(var(--text));
+  background-color: rgb(var(--bg1));
+  /* 모바일 터치 최적화 */
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+  /* safe area 패딩 */
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+#root {
+  min-height: 100%;
+  min-height: 100dvh;
+  background-color: rgb(var(--bg1));
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  /* 터치 시 하이라이트 제거 */
+  -webkit-touch-callout: none;
+}
+
+/* 텍스트 선택 방지 (버튼, 라벨 등) */
+button, label, .no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 입력 필드는 선택 허용 */
+input, textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+.text-muted {
+  color: rgb(var(--muted));
+}
+
+body {
+  font-weight: 600;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+.app-card {
+  position: relative;
+  background: rgb(var(--panel)); /* 불투명 - 확실히 밝게 보임 */
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.app-card::before {
+  content: none;
+}
+
+.app-card-elevated {
+  position: relative;
+  /* "기본" 같은 주요 위젯 - 불투명, 확실히 밝게 */
+  background: rgb(var(--panel));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 10px 30px rgba(0, 0, 0, 0.40);
+}
+
+.app-card-elevated::before {
+  content: none;
+}
+
+.app-banner {
+  position: relative;
+  /* "단어장" 배너/하단 탭 - 불투명, 확실히 밝게 */
+  background: rgb(var(--panel2));
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.app-banner::after {
+  content: none;
+}
+
+.app-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 800;
+  font-size: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 16px rgba(0, 0, 0, 0.22);
+}
+
+.app-title {
+  color: rgb(var(--green));
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  text-shadow: 0 2px 18px rgba(34, 197, 94, 0.18);
+}
+
+/* ========== 모바일 반응형 스타일 ========== */
+
+/* 작은 화면 (iPhone SE, 소형 안드로이드) */
+@media screen and (max-width: 375px) {
+  .app-title {
+    font-size: 1.5rem !important;
+  }
+  
+  .app-chip {
+    padding: 8px 10px;
+    font-size: 12px;
+    gap: 6px;
+  }
+}
+
+/* 중간 화면 (대부분의 스마트폰) */
+@media screen and (max-width: 428px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+/* 큰 화면 (태블릿, 대형 스마트폰) */
+@media screen and (min-width: 429px) and (max-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+/* 하단 네비게이션 safe area */
+.bottom-nav-container {
+  padding-bottom: calc(1.25rem + var(--safe-bottom));
+}
+
+/* 스크롤 스냅 (선택적) */
+.scroll-snap-y {
+  scroll-snap-type: y proximity;
+}
+
+.scroll-snap-start {
+  scroll-snap-align: start;
+}
+
+/* 터치 피드백 개선 */
+button:active {
+  transform: scale(0.98);
+  transition: transform 0.1s ease;
+}
+
+/* 큰 터치 영역 보장 (최소 44px - Apple HIG) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* 가로 모드 최적화 */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  .app-title {
+    font-size: 1.25rem !important;
+  }
+  
+  .bottom-nav-container {
+    padding-bottom: calc(0.5rem + var(--safe-bottom));
+  }
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    
+    <!-- 보안: Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.google-analytics.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com data:;
+      img-src 'self' data: blob: https: http:;
+      media-src 'self' blob: https:;
+      connect-src 'self' https://*.supabase.co https://*.supabase.com https://api.openai.com https://texttospeech.googleapis.com https://ip-api.com https://www.google-analytics.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.firebaseio.com https://*.firebase.google.com wss://*.supabase.co;
+      frame-src 'self' https://googleads.g.doubleclick.net https://www.google.com https://tpc.googlesyndication.com;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      upgrade-insecure-requests;
+    " />
+    
+    <!-- 보안: X-Content-Type-Options -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    
+    <!-- 보안: X-Frame-Options -->
+    <meta http-equiv="X-Frame-Options" content="SAMEORIGIN" />
+    
+    <!-- 보안: Referrer Policy -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    
+    <!-- 모바일 최적화: 줌 방지, safe-area 지원 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
+    <!-- iOS 홈 화면 앱 설정 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- 테마 색상 -->
+    <meta name="theme-color" content="#070a12" />
+    
+    <title>K-Kiswahili-Words</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
