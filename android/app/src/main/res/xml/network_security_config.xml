@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   K-Kiswahili-Words Network Security Configuration
-  Maximum Security: HTTPS Only
 -->
 <network-security-config>
-    <!-- 기본 설정: HTTPS만 허용 -->
+    <!-- 기본 설정: HTTPS 권장 -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
-            <!-- 시스템 CA 인증서만 신뢰 -->
             <certificates src="system" />
         </trust-anchors>
     </base-config>
 
-    <!-- 허용된 도메인 (Supabase, Google, Firebase) -->
+    <!-- Capacitor 로컬 서버 허용 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+    <!-- 허용된 HTTPS 도메인 -->
     <domain-config cleartextTrafficPermitted="false">
         <!-- Supabase -->
         <domain includeSubdomains="true">supabase.co</domain>
@@ -24,21 +28,19 @@
         <domain includeSubdomains="true">gstatic.com</domain>
         <domain includeSubdomains="true">googleadservices.com</domain>
         <domain includeSubdomains="true">doubleclick.net</domain>
+        <domain includeSubdomains="true">googlesyndication.com</domain>
         
         <!-- Firebase -->
         <domain includeSubdomains="true">firebaseio.com</domain>
         <domain includeSubdomains="true">firebase.google.com</domain>
         <domain includeSubdomains="true">firebaseinstallations.googleapis.com</domain>
         
+        <!-- IP API (언어 감지용) -->
+        <domain includeSubdomains="true">ip-api.com</domain>
+        <domain includeSubdomains="true">ipapi.co</domain>
+        
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </domain-config>
-
-    <!-- 디버그 빌드에서도 HTTPS 강제 (개발 중에도 보안 유지) -->
-    <debug-overrides>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </debug-overrides>
 </network-security-config>

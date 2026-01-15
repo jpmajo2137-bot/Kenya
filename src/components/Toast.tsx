@@ -6,6 +6,7 @@ type ToastItem = {
   id: string
   title: string
   description?: string
+  position?: 'bottom-right' | 'center'
 }
 
 const ToastContext = createContext<{
@@ -29,7 +30,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div className="fixed bottom-4 right-4 z-[60] flex w-[320px] flex-col gap-2">
-        {items.map((t) => (
+        {items
+          .filter((t) => t.position !== 'center')
+          .map((t) => (
           <div
             key={t.id}
             className={cn(
@@ -40,6 +43,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.description ? <div className="mt-0.5 text-xs text-white/70">{t.description}</div> : null}
           </div>
         ))}
+      </div>
+      <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center">
+        <div className="flex w-[320px] flex-col gap-2">
+          {items
+            .filter((t) => t.position === 'center')
+            .map((t) => (
+            <div
+              key={t.id}
+              className={cn(
+                'rounded-2xl border border-white/10 bg-[rgb(var(--panel2))]/95 p-3 shadow-xl backdrop-blur',
+              )}
+            >
+              <div className="text-sm font-bold text-white">{t.title}</div>
+              {t.description ? <div className="mt-0.5 text-xs text-white/70">{t.description}</div> : null}
+            </div>
+          ))}
+        </div>
       </div>
     </ToastContext.Provider>
   )

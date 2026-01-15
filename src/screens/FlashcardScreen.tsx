@@ -25,6 +25,13 @@ type CloudRow = {
 
 // 오답노트 로컬스토리지 키
 const WRONG_ANSWERS_KEY = 'flashcard_wrong_answers'
+export const WRONG_ANSWERS_UPDATED_EVENT = 'wrong-answers-updated'
+
+function emitWrongAnswersUpdated() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(WRONG_ANSWERS_UPDATED_EVENT))
+  }
+}
 
 // 오답노트에서 단어 ID 목록 가져오기
 function getWrongAnswers(): string[] {
@@ -37,19 +44,21 @@ function getWrongAnswers(): string[] {
 }
 
 // 오답노트에 단어 추가
-function addToWrongAnswers(wordId: string) {
+export function addToWrongAnswers(wordId: string) {
   const current = getWrongAnswers()
   if (!current.includes(wordId)) {
     const updated = [...current, wordId]
     localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(updated))
+    emitWrongAnswersUpdated()
   }
 }
 
 // 오답노트에서 단어 제거
-function removeFromWrongAnswers(wordId: string) {
+export function removeFromWrongAnswers(wordId: string) {
   const current = getWrongAnswers()
   const updated = current.filter((id) => id !== wordId)
   localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(updated))
+  emitWrongAnswersUpdated()
 }
 
 // 오답노트 전체 삭제 (필요시 사용)
@@ -111,6 +120,8 @@ export function FlashcardScreen({
   const [unknownCount, setUnknownCount] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
   const [wrongWords, setWrongWords] = useState<CloudRow[]>([]) // 이번 세션에서 틀린 단어들
+
+  // 뒤로가기는 부모 컴포넌트(AllWordsDayList)에서 처리
 
   useEffect(() => {
     const fetchWords = async () => {
@@ -214,6 +225,21 @@ export function FlashcardScreen({
     goToNext()
   }, [goToNext, currentWord])
 
+  // 오답노트 모드: 외웠어요 (오답노트에서 제거)
+  const handleMastered = useCallback(() => {
+    setKnownCount((c) => c + 1)
+    if (currentWord) {
+      removeFromWrongAnswers(currentWord.id)
+    }
+    goToNext()
+  }, [goToNext, currentWord])
+
+  // 오답노트 모드: 넘기기 (오답노트에서 제거 안함)
+  const handleSkip = useCallback(() => {
+    setUnknownCount((c) => c + 1)
+    goToNext()
+  }, [goToNext])
+
   const handleRestart = () => {
     setCurrentIndex(0)
     setIsFlipped(false)
@@ -231,16 +257,22 @@ export function FlashcardScreen({
           handleFlip()
         }
       } else if (e.key === 'ArrowRight' || e.key === 'o') {
-        if (isFlipped) handleKnown()
+        if (isFlipped) {
+          if (wrongAnswerMode) handleMastered()
+          else handleKnown()
+        }
       } else if (e.key === 'ArrowLeft' || e.key === 'x') {
-        if (isFlipped) handleUnknown()
+        if (isFlipped) {
+          if (wrongAnswerMode) handleSkip()
+          else handleUnknown()
+        }
       } else if (e.key === 'Escape') {
-        onClose()
+        window.history.back()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isFlipped, handleFlip, handleKnown, handleUnknown, onClose])
+  }, [isFlipped, handleFlip, handleKnown, handleUnknown, handleMastered, handleSkip, wrongAnswerMode, onClose])
 
   if (loading) {
     return (
@@ -256,9 +288,12 @@ export function FlashcardScreen({
     const total = knownCount + unknownCount
     const percentage = total > 0 ? Math.round((knownCount / total) * 100) : 0
     
-    const getMeaning = (w: CloudRow) => mode === 'sw' 
-      ? (w.meaning_sw || w.meaning_en || '') 
-      : (w.meaning_ko || w.meaning_en || '')
+    const getMeaning = (w: CloudRow) => {
+      const raw = mode === 'sw' 
+        ? (w.meaning_sw || w.meaning_en || '') 
+        : (w.meaning_ko || w.meaning_en || '')
+      return raw.includes(',') ? raw.split(',')[0].trim() : raw
+    }
     
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto bg-black/95 p-3 sm:p-4" style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}>
@@ -276,13 +311,17 @@ export function FlashcardScreen({
               <div className="rounded-2xl bg-emerald-500/20 p-3 sm:p-4">
                 <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400">{knownCount}</div>
                 <div className="text-xs sm:text-sm text-emerald-300">
-                  {lang === 'sw' ? 'Najua' : '알아요'}
+                  {wrongAnswerMode 
+                    ? (lang === 'sw' ? 'Ondoa' : '제거됨')
+                    : (lang === 'sw' ? 'Najua' : '알아요')}
                 </div>
               </div>
               <div className="rounded-2xl bg-rose-500/20 p-3 sm:p-4">
                 <div className="text-2xl sm:text-3xl font-extrabold text-rose-400">{unknownCount}</div>
                 <div className="text-xs sm:text-sm text-rose-300">
-                  {lang === 'sw' ? 'Sijui' : '몰라요'}
+                  {wrongAnswerMode
+                    ? (lang === 'sw' ? 'Ruka' : '넘기기')
+                    : (lang === 'sw' ? 'Sijui' : '몰라요')}
                 </div>
               </div>
             </div>
@@ -324,7 +363,7 @@ export function FlashcardScreen({
             )}
             
             <div className="flex gap-2 sm:gap-3">
-              <Button variant="secondary" onClick={onClose} className="flex-1">
+              <Button variant="secondary" onClick={() => window.history.back()} className="flex-1">
                 {lang === 'sw' ? 'Funga' : '닫기'}
               </Button>
               <Button variant="primary" onClick={handleRestart} className="flex-1">
@@ -344,7 +383,7 @@ export function FlashcardScreen({
           <div className="text-xl font-bold text-white mb-4">
             {lang === 'sw' ? 'Hakuna maneno' : '단어가 없습니다'}
           </div>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={() => window.history.back()}>
             {lang === 'sw' ? 'Funga' : '닫기'}
           </Button>
         </div>
@@ -352,9 +391,10 @@ export function FlashcardScreen({
     )
   }
 
-  const meaning = mode === 'sw' 
+  const rawMeaning = mode === 'sw' 
     ? (currentWord.meaning_sw || currentWord.meaning_en || '') 
     : (currentWord.meaning_ko || currentWord.meaning_en || '')
+  const meaning = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
   
   const exampleTranslation = mode === 'sw'
     ? (currentWord.example_translation_sw || currentWord.example_translation_en || '')
@@ -365,7 +405,7 @@ export function FlashcardScreen({
       {/* Header */}
       <div className="flex items-center justify-between p-3 sm:p-4">
         <button
-          onClick={onClose}
+          onClick={() => window.history.back()}
           className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 active:scale-95 transition touch-target"
         >
           ✕
@@ -471,20 +511,39 @@ export function FlashcardScreen({
       {/* Bottom buttons */}
       <div className="p-3 sm:p-4 pb-4 sm:pb-8">
         {isFlipped ? (
-          <div className="flex gap-3 sm:gap-4 max-w-md mx-auto">
-            <button
-              onClick={handleUnknown}
-              className="flex-1 rounded-2xl bg-rose-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-rose-400 border-2 border-rose-500/30 hover:bg-rose-500/30 active:scale-95 transition touch-target"
-            >
-              {lang === 'sw' ? '❌ Sijui' : '❌ 몰라요'}
-            </button>
-            <button
-              onClick={handleKnown}
-              className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target"
-            >
-              {lang === 'sw' ? '✅ Najua' : '✅ 알아요'}
-            </button>
-          </div>
+          wrongAnswerMode ? (
+            // 오답노트 모드: 넘기기 / 외웠어요
+            <div className="flex gap-3 sm:gap-4 max-w-md mx-auto">
+              <button
+                onClick={handleSkip}
+                className="flex-1 rounded-2xl bg-slate-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-slate-300 border-2 border-slate-500/30 hover:bg-slate-500/30 active:scale-95 transition touch-target"
+              >
+                {lang === 'sw' ? '➡️ Ruka' : '➡️ 넘기기'}
+              </button>
+              <button
+                onClick={handleMastered}
+                className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target"
+              >
+                {lang === 'sw' ? '✅ Ondoa' : '✅ 오답노트 제거'}
+              </button>
+            </div>
+          ) : (
+            // 일반 모드: 몰라요 / 알아요
+            <div className="flex gap-3 sm:gap-4 max-w-md mx-auto">
+              <button
+                onClick={handleUnknown}
+                className="flex-1 rounded-2xl bg-rose-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-rose-400 border-2 border-rose-500/30 hover:bg-rose-500/30 active:scale-95 transition touch-target"
+              >
+                {lang === 'sw' ? '❌ Sijui' : '❌ 몰라요'}
+              </button>
+              <button
+                onClick={handleKnown}
+                className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target"
+              >
+                {lang === 'sw' ? '✅ Najua' : '✅ 알아요'}
+              </button>
+            </div>
+          )
         ) : (
           <button
             onClick={handleFlip}
@@ -498,8 +557,17 @@ export function FlashcardScreen({
       {/* Keyboard hints (desktop only) */}
       <div className="hidden md:block absolute bottom-4 left-4 text-xs text-white/30">
         <div>Space/Enter: {lang === 'sw' ? 'Geuza' : '뒤집기'}</div>
-        <div>← / X: {lang === 'sw' ? 'Sijui' : '몰라요'}</div>
-        <div>→ / O: {lang === 'sw' ? 'Najua' : '알아요'}</div>
+        {wrongAnswerMode ? (
+          <>
+            <div>← / X: {lang === 'sw' ? 'Ruka' : '넘기기'}</div>
+            <div>→ / O: {lang === 'sw' ? 'Ondoa' : '오답노트 제거'}</div>
+          </>
+        ) : (
+          <>
+            <div>← / X: {lang === 'sw' ? 'Sijui' : '몰라요'}</div>
+            <div>→ / O: {lang === 'sw' ? 'Najua' : '알아요'}</div>
+          </>
+        )}
         <div>Esc: {lang === 'sw' ? 'Funga' : '닫기'}</div>
       </div>
     </div>

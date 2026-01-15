@@ -21,6 +21,8 @@ export type VocabItem = {
   pos?: string
   tags: string[]
   example?: string
+  exampleKo?: string
+  exampleEn?: string
   note?: string
   createdAt: number
   updatedAt: number

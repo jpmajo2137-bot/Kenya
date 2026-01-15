@@ -9,7 +9,7 @@ export const defaultSettings: AppSettings = {
   topTab: 'home',
   bottomTab: 'wordbook',
   quizCount: 10,
-  quizSource: 'all',
+  quizSource: { cloud: '모든 단어' },
 }
 
 export function createSeedState(now = Date.now()): AppStateV2 {
@@ -60,11 +60,15 @@ export type Action =
   | { type: 'wrongRemove'; id: string }
   | { type: 'settings'; patch: Partial<AppSettings> }
   | { type: 'localClearForCloudAllWords'; keepDeckId?: string }
+  | { type: 'hydrate'; state: AppStateV2 }
 
 export function reducer(state: AppStateV2, action: Action): AppStateV2 {
   const now = Date.now()
 
   switch (action.type) {
+    case 'hydrate': {
+      return action.state
+    }
     case 'deckAdd': {
       const name = action.name.trim()
       if (!name) return state

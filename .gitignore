@@ -62,17 +62,13 @@ ios/App/build/
 *.njsproj
 *.sln
 *.sw?
-Thumbs.db
-
-# OS generated files
+Thumbs.db# OS generated files
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
-
-# Temporary files
+ehthumbs.db# Temporary files
 *.tmp
 *.temp
 *.bak
@@ -86,14 +82,10 @@ coverage/
 # Cache
 .cache/
 .parcel-cache/
-.eslintcache
-
-# PWA generated
+.eslintcache# PWA generated
 sw.js
 workbox-*.js
 
 # Data files (선택적)
-data/
-
-# Zip files
+data/# Zip files
 *.zip

@@ -266,6 +266,52 @@ export async function getVocabFromCache(
 }
 
 /**
+ * ID 목록으로 캐시된 단어 가져오기
+ */
+export async function getVocabByIds(ids: string[]): Promise<CachedVocab[]> {
+  if (ids.length === 0) return []
+  const db = await getDB()
+  const tx = db.transaction(STORE_NAME, 'readonly')
+  const store = tx.objectStore(STORE_NAME)
+
+  return new Promise((resolve, reject) => {
+    const results: CachedVocab[] = []
+    let pending = ids.length
+    let done = false
+
+    const finish = (value: CachedVocab[]) => {
+      if (!done) {
+        done = true
+        resolve(value)
+      }
+    }
+
+    const fail = (error: unknown) => {
+      if (!done) {
+        done = true
+        reject(error)
+      }
+    }
+
+    tx.onerror = () => fail(tx.error)
+
+    ids.forEach((id) => {
+      const request = store.get(id)
+      request.onsuccess = () => {
+        const result = request.result as CachedVocab | undefined
+        if (result) results.push(result)
+        pending -= 1
+        if (pending === 0) finish(results)
+      }
+      request.onerror = () => {
+        pending -= 1
+        if (pending === 0) finish(results)
+      }
+    })
+  })
+}
+
+/**
  * 캐시된 단어 개수 가져오기
  */
 export async function getCacheCount(mode: Mode, category?: string | null): Promise<number> {

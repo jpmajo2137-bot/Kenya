@@ -28,7 +28,9 @@ export function SettingsScreen({
 
   const onUserDataWipe = () => {
     const ok = window.confirm(
-      '정말로 사용자 데이터를 삭제할까요?\n\n- 단어장\n- 단어 목록\n- 오답 노트\n- 학습 기록\n\n삭제 후 앱이 새로고침됩니다.',
+      lang === 'sw'
+        ? 'Una uhakika unataka kufuta data ya mtumiaji?\n\n- Vitabu vya maneno\n- Orodha ya maneno\n- Orodha ya makosa\n- Rekodi ya kujifunza\n\nBaada ya kufuta, programu itaanzishwa upya.'
+        : '정말로 사용자 데이터를 삭제할까요?\n\n- 단어장\n- 단어 목록\n- 오답 노트\n- 학습 기록\n\n삭제 후 앱이 새로고침됩니다.',
     )
     if (!ok) return
     try {
@@ -36,7 +38,11 @@ export function SettingsScreen({
     } catch {
       // ignore
     }
-    toast({ title: '삭제 완료', description: '사용자 데이터가 삭제되었습니다. 새로고침합니다...' })
+    toast({
+      title: lang === 'sw' ? 'Imefutwa' : '삭제 완료',
+      description: lang === 'sw' ? 'Data ya mtumiaji imefutwa. Inaanzisha upya...' : '사용자 데이터가 삭제되었습니다. 새로고침합니다...',
+      position: 'center',
+    })
     window.setTimeout(() => window.location.reload(), 400)
   }
 
@@ -93,6 +99,25 @@ export function SettingsScreen({
         <div className="mt-4">
           <Button variant="danger" onClick={onUserDataWipe}>
             {lang === 'sw' ? 'Futa Data ya Mtumiaji' : '사용자 데이터 삭제'}
+          </Button>
+        </div>
+      </div>
+
+      {/* 개인정보처리방침 */}
+      <div className="rounded-3xl p-5 app-card backdrop-blur">
+        <div className="text-base font-extrabold text-white">
+          {lang === 'sw' ? 'Sera ya Faragha' : '개인정보처리방침'}
+        </div>
+        <div className="mt-1 text-xs font-semibold text-white/65">
+          {lang === 'sw' ? 'Soma sera yetu ya faragha' : '개인정보 수집 및 이용에 관한 안내'}
+        </div>
+        <div className="mt-4">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open('https://k-kiswahili-words-59804.web.app/privacy', '_blank')}
+          >
+            {lang === 'sw' ? '📋 Sera ya Faragha' : '📋 개인정보처리방침 보기'}
           </Button>
         </div>
       </div>

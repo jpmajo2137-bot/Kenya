@@ -158,6 +158,9 @@ export function CloudAllWordsScreen({
 
   // 오프라인 캐시에서 데이터 가져오기
   const fetchFromCache = async () => {
+    // #region agent log
+    console.log('[DEBUG] CloudAllWordsScreen fetchFromCache started', JSON.stringify({mode,levelFilter,dayNumber}));
+    // #endregion
     setLoading(true)
     setError(null)
     setUsingCache(true)
@@ -167,9 +170,15 @@ export function CloudAllWordsScreen({
 
       const data = await getVocabFromCache(mode, levelFilter || undefined, dayNumber, wordsPerDay)
       const cleaned = data.filter((r) => !r.word?.startsWith('__deleted__'))
+      // #region agent log
+      console.log('[DEBUG] CloudAllWordsScreen fetchFromCache result', JSON.stringify({count,dataLength:cleaned.length}));
+      // #endregion
       setRows(cleaned as CloudRow[])
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      // #region agent log
+      console.error('[DEBUG] CloudAllWordsScreen fetchFromCache error', msg);
+      // #endregion
       setError(msg)
     } finally {
       setLoading(false)
@@ -178,6 +187,9 @@ export function CloudAllWordsScreen({
 
   // 온라인에서 데이터 가져오기
   const fetchFromCloud = async () => {
+    // #region agent log
+    console.log('[DEBUG] CloudAllWordsScreen fetchFromCloud started', JSON.stringify({supabaseExists:!!supabase,mode,levelFilter,dayNumber}));
+    // #endregion
     if (!supabase) {
       setError(lang === 'sw' ? 'Supabase haijawekwa.' : 'Supabase 설정이 없습니다.')
       return
@@ -235,6 +247,9 @@ export function CloudAllWordsScreen({
 
   // 데이터 가져오기 (온라인/오프라인 자동 전환)
   const fetchRows = async () => {
+    // #region agent log
+    console.log('[DEBUG] CloudAllWordsScreen fetchRows called', JSON.stringify({online,supabaseExists:!!supabase}));
+    // #endregion
     if (online && supabase) {
       await fetchFromCloud()
     } else {
@@ -298,7 +313,9 @@ export function CloudAllWordsScreen({
 
       <div className="grid gap-4">
         {rows.map((r) => {
-          const mainMeaning = mode === 'sw' ? r.meaning_sw : r.meaning_ko
+          // 쉼표가 있으면 첫 번째 부분만 사용 (데이터 정제)
+          const rawMeaning = mode === 'sw' ? r.meaning_sw : r.meaning_ko
+          const mainMeaning = rawMeaning?.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
 
           return (
             <div key={r.id} className="rounded-3xl p-5 app-card backdrop-blur">

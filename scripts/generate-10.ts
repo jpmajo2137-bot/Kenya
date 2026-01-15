@@ -208,19 +208,19 @@ const ttsClient = new textToSpeech.TextToSpeechClient()
 
 async function ttsGoogle(text: string, lang: TTLLang, speakingRate = 1.0): Promise<ArrayBuffer | null> {
   try {
-    const [response] = await ttsClient.synthesizeSpeech({
-      input: { text },
-      voice: {
-        languageCode: GCP_VOICE_MAP[lang].split('-').slice(0, 2).join('-'),
-        name: GCP_VOICE_MAP[lang],
-      },
-      audioConfig: {
-        audioEncoding: 'MP3',
-        speakingRate,
-      },
-    })
+  const [response] = await ttsClient.synthesizeSpeech({
+    input: { text },
+    voice: {
+      languageCode: GCP_VOICE_MAP[lang].split('-').slice(0, 2).join('-'),
+      name: GCP_VOICE_MAP[lang],
+    },
+    audioConfig: {
+      audioEncoding: 'MP3',
+      speakingRate,
+    },
+  })
     if (!response.audioContent) return null
-    return response.audioContent as ArrayBuffer
+  return response.audioContent as ArrayBuffer
   } catch (e: any) {
     console.log(`    ⚠️ TTS 생략 (${lang}): ${e.details || e.message}`)
     return null

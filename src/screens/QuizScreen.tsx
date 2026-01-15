@@ -5,7 +5,8 @@ import { Button } from '../components/Button'
 import { cn } from '../components/cn'
 import { t, type Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
-import { getWrongAnswerIds } from './FlashcardScreen'
+import { getWrongAnswerIds, addToWrongAnswers, removeFromWrongAnswers, WRONG_ANSWERS_UPDATED_EVENT } from './FlashcardScreen'
+import { getVocabByIds, type CachedVocab } from '../lib/offlineCache'
 import { canAccessQuiz, showRewardedAd, getQuizAccessRemainingTime } from '../lib/admob'
 
 type QuizSource = 'all' | 'wrong' | { deckId: string } | { cloud: string }
@@ -17,6 +18,25 @@ type CloudWord = {
   meaning_sw: string | null
   meaning_ko: string | null
   meaning_en: string | null
+}
+
+const WRONG_ANSWERS_KEY = 'flashcard_wrong_answers'
+
+function mapCachedToCloud(row: CachedVocab): CloudWord {
+  return {
+    id: row.id,
+    word: row.word,
+    word_audio_url: row.word_audio_url ?? null,
+    meaning_sw: row.meaning_sw ?? null,
+    meaning_ko: row.meaning_ko ?? null,
+    meaning_en: row.meaning_en ?? null,
+  }
+}
+
+// 쉼표가 있으면 첫 번째 부분만 사용 (데이터 정제)
+function cleanMeaning(text: string | null): string {
+  if (!text) return ''
+  return text.includes(',') ? text.split(',')[0].trim() : text
 }
 
 // 클라우드 단어장 카테고리
@@ -97,11 +117,11 @@ function pickCloudOptionsWithDirection(pool: CloudWord[], correct: CloudWord, is
   // isSwToKo = true: 문제는 스와힐리어, 보기는 한국어
   // isSwToKo = false: 문제는 한국어, 보기는 스와힐리어
   const correctText = isSwToKo 
-    ? (correct.meaning_ko || correct.meaning_en || '')
+    ? cleanMeaning(correct.meaning_ko || correct.meaning_en)
     : correct.word
   
   const candidates = pool
-    .map((x) => isSwToKo ? (x.meaning_ko || x.meaning_en || '') : x.word)
+    .map((x) => isSwToKo ? cleanMeaning(x.meaning_ko || x.meaning_en) : x.word)
     .filter((t) => t && t !== correctText)
 
   const uniq = Array.from(new Set(candidates))
@@ -168,7 +188,9 @@ export function QuizScreen({
   lang: Lang
 }) {
   const [phase, setPhaseState] = useState<'setup' | 'play' | 'result'>('setup')
-  const [source, setSource] = useState<QuizSource>(quizSource)
+  // 'all'은 이전 버전 호환성 - 클라우드 '모든 단어'로 변환
+  const initialSource: QuizSource = quizSource === 'all' ? { cloud: '모든 단어' } : quizSource
+  const [source, setSource] = useState<QuizSource>(initialSource)
   const [count, setCount] = useState<5 | 10 | 20 | 50>(quizCount)
   
   // 광고 관련 상태
@@ -221,6 +243,16 @@ export function QuizScreen({
   const [cloudLoading, setCloudLoading] = useState(false)
   const [cloudPool, setCloudPool] = useState<CloudWord[]>([])
   const [allCloudWords, setAllCloudWords] = useState<CloudWord[]>([]) // 전체 단어 (보기용)
+  const [wrongAnswerVersion, setWrongAnswerVersion] = useState(0)
+
+  // 오답노트 변경 이벤트 수신
+  useEffect(() => {
+    const handleWrongAnswersUpdated = () => {
+      setWrongAnswerVersion((v) => v + 1)
+    }
+    window.addEventListener(WRONG_ANSWERS_UPDATED_EVENT, handleWrongAnswersUpdated)
+    return () => window.removeEventListener(WRONG_ANSWERS_UPDATED_EVENT, handleWrongAnswersUpdated)
+  }, [])
 
   const wrongIds = useMemo(() => new Set(wrong.map((w) => w.id)), [wrong])
 
@@ -243,11 +275,17 @@ export function QuizScreen({
 
   // 선택한 단어장의 클라우드 단어 가져오기 (문제용)
   useEffect(() => {
+    let cancelled = false
     const fetchCloudWords = async () => {
-      if (!supabase) return
-      
       // 클라우드 소스인지 확인
       if (typeof source === 'object' && 'cloud' in source) {
+        if (!supabase) {
+          setCloudWords([])
+          setCloudPool([])
+          setCloudLoading(false)
+          return
+        }
+
         setCloudLoading(true)
         const mode = lang === 'sw' ? 'sw' : 'ko'
         
@@ -261,32 +299,85 @@ export function QuizScreen({
         }
         
         const { data } = await query.limit(500)
+        if (cancelled) return
         setCloudWords((data ?? []) as CloudWord[])
         setCloudPool((data ?? []) as CloudWord[])
         setCloudLoading(false)
-      } else if (source === 'wrong') {
-        // 오답노트
+        return
+      }
+
+      if (source === 'wrong') {
         const wrongAnswerIds = getWrongAnswerIds()
-        if (wrongAnswerIds.length > 0 && supabase) {
-          setCloudLoading(true)
-          const { data } = await supabase
+        if (wrongAnswerIds.length === 0) {
+          setCloudWords([])
+          setCloudPool([])
+          setCloudLoading(false)
+          return
+        }
+
+        setCloudLoading(true)
+        let fetched: CloudWord[] = []
+        let hasFetchError = false
+
+        if (supabase) {
+          const { data, error } = await supabase
             .from('generated_vocab')
             .select('id, word, word_audio_url, meaning_sw, meaning_ko, meaning_en')
             .in('id', wrongAnswerIds)
-          setCloudWords((data ?? []) as CloudWord[])
-          setCloudPool((data ?? []) as CloudWord[])
-          setCloudLoading(false)
+          if (error) {
+            console.error('오답노트 퀴즈 불러오기 실패:', error)
+            hasFetchError = true
+          } else {
+            fetched = (data ?? []) as CloudWord[]
+          }
         } else {
-          setCloudWords([])
-          setCloudPool([])
+          hasFetchError = true
         }
-      } else {
-        setCloudWords([])
-        setCloudPool([])
+
+        const fetchedIds = new Set(fetched.map((w) => w.id))
+        const missingIds = wrongAnswerIds.filter((id) => !fetchedIds.has(id))
+        let cached: CloudWord[] = []
+
+        if (missingIds.length > 0) {
+          try {
+            const cachedRows = await getVocabByIds(missingIds)
+            cached = cachedRows.map(mapCachedToCloud)
+          } catch (error) {
+            console.error('오답노트 캐시 로딩 실패:', error)
+          }
+        }
+
+        const merged = [...fetched, ...cached]
+
+        if (cancelled) return
+        setCloudWords(merged)
+        setCloudPool(merged)
+        setCloudLoading(false)
+
+        if (merged.length !== wrongAnswerIds.length || hasFetchError) {
+          const mergedIds = new Set(merged.map((w) => w.id))
+          const updated = wrongAnswerIds.filter((id) => mergedIds.has(id))
+          try {
+            localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(updated))
+            if (updated.length !== wrongAnswerIds.length) {
+              window.dispatchEvent(new Event(WRONG_ANSWERS_UPDATED_EVENT))
+            }
+          } catch {
+            // ignore
+          }
+        }
+        return
       }
+
+      setCloudWords([])
+      setCloudPool([])
+      setCloudLoading(false)
     }
     void fetchCloudWords()
-  }, [source, lang])
+    return () => {
+      cancelled = true
+    }
+  }, [source, lang, wrongAnswerVersion])
 
   const pool = useMemo(() => {
     let base = items
@@ -324,6 +415,7 @@ export function QuizScreen({
   const [selected, setSelected] = useState<string | null>(null)
   const [correctText, setCorrectText] = useState<string>('')
   const [options, setOptions] = useState<string[]>([])
+  const [removedFromWrong, setRemovedFromWrong] = useState(false) // 오답노트에서 제거됨
 
   const current = order[idx] ?? null
   const currentCloud = cloudOrder[idx] ?? null
@@ -350,6 +442,7 @@ export function QuizScreen({
       setIdx(0)
       setScore(0)
       setSelected(null)
+      setRemovedFromWrong(false)
       setPhase('play')
       if (q[0]) {
         // 보기는 전체 단어(allCloudWords)에서 가져옴
@@ -376,6 +469,7 @@ export function QuizScreen({
       setIdx(0)
       setScore(0)
       setSelected(null)
+      setRemovedFromWrong(false)
       setPhase('play')
       if (q[0]) {
         const built = pickOptions(pool, q[0], meaningLang)
@@ -438,6 +532,11 @@ export function QuizScreen({
     if (current) {
       dispatch({ type: 'quizAnswer', id: current.id, correct: ok })
     }
+    
+    // 클라우드 단어 오답 시 오답노트에 추가
+    if (currentCloud && !ok) {
+      addToWrongAnswers(currentCloud.id)
+    }
   }
 
   const next = () => {
@@ -449,6 +548,7 @@ export function QuizScreen({
     }
     setIdx(nextIdx)
     setSelected(null)
+    setRemovedFromWrong(false)
     
     if (cloudOrder.length > 0) {
       // 보기는 전체 단어(allCloudWords)에서 가져옴
@@ -507,12 +607,17 @@ export function QuizScreen({
                 else setSource({ deckId: v })
               }}
             >
-              <option value="wrong">{t('wrongNotes', lang)}</option>
               {CLOUD_CATEGORIES.map((cat) => (
                 <option key={cat} value={`cloud_${cat}`}>
                   {translateCategory(cat, lang)}
                 </option>
               ))}
+              {decks.filter(d => !CLOUD_CATEGORIES.includes(d.name)).map((deck) => (
+                <option key={deck.id} value={deck.id}>
+                  {deck.name}
+                </option>
+              ))}
+              <option value="wrong">{t('wrongNotes', lang)}</option>
             </select>
 
             <div className="mt-1 sm:mt-2 flex items-center gap-2 text-lg sm:text-xl font-extrabold text-white">
@@ -578,39 +683,48 @@ export function QuizScreen({
         
         {/* 보상형 광고 모달 */}
         {showAdModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-            <div className="w-full max-w-sm rounded-3xl bg-slate-900 p-6 shadow-2xl border border-white/10">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
+            <div className="w-full max-w-sm rounded-3xl bg-gradient-to-b from-slate-800 to-slate-900 p-6 shadow-2xl border border-white/20">
               <div className="text-center">
-                <div className="text-5xl mb-4">🎬</div>
-                <h3 className="text-xl font-bold text-white mb-2">
+                <div className="text-6xl mb-4 animate-bounce">🎬</div>
+                <h3 className="text-2xl font-extrabold text-white mb-3">
                   {lang === 'sw' ? 'Tazama Tangazo' : '광고 시청'}
                 </h3>
-                <p className="text-sm text-white/70 mb-6">
+                <p className="text-sm text-white/80 mb-6 leading-relaxed">
                   {lang === 'sw' 
                     ? 'Tazama tangazo fupi kupata dakika 30 za kuis bila vikwazo!'
                     : '짧은 광고를 시청하면 30분간 광고 없이 퀴즈를 풀 수 있어요!'}
                 </p>
                 
                 <div className="space-y-3">
-                  <Button
-                    variant="success"
-                    className="w-full h-14 rounded-2xl"
+                  <button
+                    className={cn(
+                      'w-full h-16 rounded-2xl font-black text-xl tracking-wide text-white transition-all',
+                      'bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500',
+                      'shadow-[0_8px_32px_rgba(34,197,94,0.5)] ring-4 ring-green-400/50',
+                      'hover:scale-[1.02] hover:shadow-[0_12px_40px_rgba(34,197,94,0.6)]',
+                      'active:scale-[0.98]',
+                      adLoading && 'opacity-70 cursor-wait'
+                    )}
                     onClick={handleWatchAd}
                     disabled={adLoading}
+                    style={{ textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
                   >
                     {adLoading ? (
-                      <span className="text-lg font-bold">
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="animate-spin">⏳</span>
                         {lang === 'sw' ? 'Inapakia...' : '로딩 중...'}
                       </span>
                     ) : (
-                      <span className="text-lg font-bold">
-                        {lang === 'sw' ? '▶ Tazama Tangazo' : '▶ 광고 보기'}
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="text-2xl">▶</span>
+                        {lang === 'sw' ? 'Tazama Tangazo' : '광고 보기'}
                       </span>
                     )}
-                  </Button>
+                  </button>
                   
                   <button
-                    className="w-full h-12 rounded-2xl bg-white/10 text-white/70 font-semibold transition hover:bg-white/15 active:scale-95"
+                    className="w-full h-12 rounded-2xl bg-white/10 text-white/60 font-semibold transition hover:bg-white/15 active:scale-95"
                     onClick={() => {
                       window.history.back()
                     }}
@@ -667,7 +781,7 @@ export function QuizScreen({
   // currentDirection = true: 스와힐리어 단어가 문제
   // currentDirection = false: 한국어 뜻이 문제
   const displayWord = currentCloud 
-    ? (currentDirection ? currentCloud.word : (currentCloud.meaning_ko || currentCloud.meaning_en || ''))
+    ? (currentDirection ? currentCloud.word : cleanMeaning(currentCloud.meaning_ko || currentCloud.meaning_en))
     : current?.sw
 
   return (
@@ -730,16 +844,39 @@ export function QuizScreen({
         </div>
 
         {selected ? (
-          <div className="mt-4 sm:mt-5 flex items-center justify-between gap-2 sm:gap-3">
-            <div
-              className={cn(
-                'text-xs sm:text-sm font-semibold min-w-0 truncate',
-                ok ? 'text-[rgb(var(--green))]' : 'text-[rgb(var(--orange))]',
-              )}
-            >
-              {ok ? correctLabel : wrongLabel}
+          <div className="mt-4 sm:mt-5 space-y-2">
+            <div className="flex items-center justify-between gap-2 sm:gap-3">
+              <div
+                className={cn(
+                  'text-xs sm:text-sm font-semibold min-w-0 truncate',
+                  ok ? 'text-[rgb(var(--green))]' : 'text-[rgb(var(--orange))]',
+                )}
+              >
+                {ok ? correctLabel : wrongLabel}
+              </div>
+              <Button onClick={next} className="shrink-0">{t('next', lang)}</Button>
             </div>
-            <Button onClick={next} className="shrink-0">{t('next', lang)}</Button>
+            {/* 오답노트 퀴즈에서 정답 시 오답노트 제거 버튼 */}
+            {isWrongSource && ok && currentCloud && (
+              <button
+                onClick={() => {
+                  removeFromWrongAnswers(currentCloud.id)
+                  setRemovedFromWrong(true)
+                }}
+                disabled={removedFromWrong}
+                className={cn(
+                  "w-full py-2 px-4 rounded-xl text-xs sm:text-sm font-semibold transition",
+                  removedFromWrong
+                    ? "bg-white/10 border border-white/20 text-white/50"
+                    : "bg-[rgb(var(--green))]/20 border border-[rgb(var(--green))]/30 text-[rgb(var(--green))] hover:bg-[rgb(var(--green))]/30 active:scale-[0.98]"
+                )}
+              >
+                {removedFromWrong 
+                  ? (lang === 'sw' ? '✓ Imeondolewa' : '✓ 제거됨')
+                  : (lang === 'sw' ? '✅ Ondoa kwenye orodha ya makosa' : '✅ 오답노트에서 제거')
+                }
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-4 sm:mt-5 text-center text-[10px] sm:text-xs font-semibold text-white/60">{t('selectAnswer', lang)}</div>

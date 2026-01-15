@@ -47,7 +47,7 @@ const texts = {
   editWord: { sw: 'Hariri Neno', ko: '단어 수정' },
   newWord: { sw: 'Neno Jipya', ko: '새 단어' },
   swahili: { sw: 'Kiswahili', ko: '스와힐리어' },
-  korean: { sw: 'Kikorea', ko: '한국어 뜻' },
+  korean: { sw: 'Kikorea', ko: '한국어' },
   english: { sw: 'Kiingereza', ko: '영어 뜻' },
   example: { sw: 'Mfano', ko: '예문' },
   note: { sw: 'Maelezo', ko: '메모' },

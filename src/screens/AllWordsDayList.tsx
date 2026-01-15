@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Button } from '../components/Button'
 import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
@@ -28,29 +28,49 @@ export function AllWordsDayList({
   const [loading, setLoading] = useState(true)
   const [, setWrongCount] = useState(getWrongAnswersCount())
 
+  // 컴포넌트 마운트 시 history state 교체 (Day 선택 화면) - replaceState로 중복 방지
+  const didReplaceInitialState = useRef(false)
+  useEffect(() => {
+    if (!didReplaceInitialState.current) {
+      didReplaceInitialState.current = true
+      // pushState 대신 replaceState로 기존 history를 교체 (두 번 클릭 문제 해결)
+      window.history.replaceState({ screen: 'dayList' }, '')
+    }
+  }, [])
+
   // 상태 변경 시 history 추가하는 wrapper 함수들
   const selectDay = (day: number) => {
-    window.history.pushState({ dayList: 'day', day }, '')
+    window.history.pushState({ screen: 'wordList', day }, '')
     setSelectedDayState(day)
   }
 
   const startFlashcard = (day: number) => {
-    window.history.pushState({ dayList: 'flashcard', day }, '')
+    window.history.pushState({ screen: 'flashcard', day }, '')
     setFlashcardDayState(day)
   }
 
-  const goBack = () => {
-    if (flashcardDay !== null) {
-      setFlashcardDayState(null)
-    } else if (selectedDay !== null) {
-      setSelectedDayState(null)
-    }
-  }
+  const closeFlashcard = useCallback(() => {
+    setFlashcardDayState(null)
+    setWrongCount(getWrongAnswersCount())
+  }, [])
 
   // 뒤로가기 핸들러
   useEffect(() => {
-    const handlePopState = () => {
-      goBack()
+    const handlePopState = (e: PopStateEvent) => {
+      const state = e.state as { screen?: string } | null
+      
+      // flashcard에서 뒤로가기
+      if (flashcardDay !== null && state?.screen !== 'flashcard') {
+        setFlashcardDayState(null)
+        setWrongCount(getWrongAnswersCount())
+        return
+      }
+      
+      // 단어 목록에서 뒤로가기
+      if (selectedDay !== null && state?.screen !== 'wordList') {
+        setSelectedDayState(null)
+        return
+      }
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -59,17 +79,24 @@ export function AllWordsDayList({
 
   useEffect(() => {
     const fetchCount = async () => {
-      if (!supabase) return
-      setLoading(true)
-      let query = supabase
-        .from('generated_vocab')
-        .select('*', { count: 'exact', head: true })
-        .eq('mode', mode)
-      if (levelFilter) {
-        query = query.eq('category', levelFilter)
+      if (!supabase) {
+        setLoading(false)
+        return
       }
-      const { count } = await query
-      setTotalCount(count ?? 0)
+      setLoading(true)
+      try {
+        let query = supabase
+          .from('generated_vocab')
+          .select('*', { count: 'exact', head: true })
+          .eq('mode', mode)
+        if (levelFilter) {
+          query = query.eq('category', levelFilter)
+        }
+        const { count } = await query
+        setTotalCount(count ?? 0)
+      } catch {
+        // 에러 처리
+      }
       setLoading(false)
     }
     void fetchCount()
@@ -86,10 +113,7 @@ export function AllWordsDayList({
         levelFilter={levelFilter}
         dayNumber={flashcardDay}
         wordsPerDay={WORDS_PER_DAY}
-        onClose={() => {
-          setFlashcardDayState(null)
-          setWrongCount(getWrongAnswersCount())
-        }}
+        onClose={closeFlashcard}
       />
     )
   }
@@ -114,7 +138,7 @@ export function AllWordsDayList({
             >
               📇 {lang === 'sw' ? 'Kadi' : '카드'}
             </Button>
-            <Button variant="secondary" onClick={() => goBack()}>
+            <Button variant="secondary" onClick={() => window.history.back()}>
               {lang === 'sw' ? 'Rudi' : '목록'}
             </Button>
           </div>

@@ -3,7 +3,7 @@ import type { VocabItem } from '../lib/types'
 import type { Action } from '../app/state'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
-import { Input, TextArea } from '../components/TextField'
+import { Input } from '../components/TextField'
 import { Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import { isDue } from '../lib/srs'
@@ -18,6 +18,8 @@ type Draft = {
   pos: string
   tags: string
   example: string
+  exampleKo: string
+  exampleEn: string
   note: string
 }
 
@@ -30,6 +32,8 @@ function toDraft(item?: VocabItem): Draft {
     pos: item?.pos ?? '',
     tags: item?.tags?.join(', ') ?? '',
     example: item?.example ?? '',
+    exampleKo: item?.exampleKo ?? '',
+    exampleEn: item?.exampleEn ?? '',
     note: item?.note ?? '',
   }
 }
@@ -64,23 +68,31 @@ export function WordbookScreen({
 
   const allTags = useMemo(() => {
     const set = new Set<string>()
-    for (const x of items) for (const tg of x.tags) set.add(tg)
+    for (const x of items) {
+      const tags = x?.tags ?? []
+      for (const tg of tags) set.add(tg)
+    }
     return [allLabel, ...Array.from(set).sort((a, b) => a.localeCompare(b, lang === 'sw' ? 'en' : 'ko'))]
   }, [items, allLabel, lang])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return items
-      .filter((x) => (tag === allLabel ? true : x.tags.includes(tag)))
       .filter((x) => {
+        if (!x) return false
+        const tags = x.tags ?? []
+        return tag === allLabel ? true : tags.includes(tag)
+      })
+      .filter((x) => {
+        if (!x) return false
         if (!q) return true
         return (
-          x.sw.toLowerCase().includes(q) ||
-          x.ko.toLowerCase().includes(q) ||
+          (x.sw ?? '').toLowerCase().includes(q) ||
+          (x.ko ?? '').toLowerCase().includes(q) ||
           (x.en ?? '').toLowerCase().includes(q)
         )
       })
-      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .sort((a, b) => (b?.updatedAt ?? 0) - (a?.updatedAt ?? 0))
   }, [items, query, tag, allLabel])
 
   const [open, setOpen] = useState(false)
@@ -117,6 +129,8 @@ export function WordbookScreen({
       pos: draft.pos.trim() || undefined,
       tags: parseTags(draft.tags),
       example: draft.example.trim() || undefined,
+      exampleKo: draft.exampleKo.trim() || undefined,
+      exampleEn: draft.exampleEn.trim() || undefined,
       note: draft.note.trim() || undefined,
     }
     if (editing) {
@@ -181,20 +195,22 @@ export function WordbookScreen({
 
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((x) => {
-          const due = isDue(x.srs)
+          if (!x) return null
+          const due = x.srs ? isDue(x.srs) : false
+          const tags = x.tags ?? []
           return (
             <div key={x.id} className="rounded-3xl p-5 app-card backdrop-blur">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <div className="text-2xl font-extrabold text-white">{x.sw}</div>
+                    <div className="text-2xl font-extrabold text-white">{x.sw ?? ''}</div>
                     {due ? (
                       <Badge className="border-[rgb(var(--green))]/25 bg-[rgb(var(--green))]/15 text-white">
                         {dueLabel}
                       </Badge>
                     ) : null}
                   </div>
-                  <div className="mt-2 text-base font-bold text-white/95">{x.ko}</div>
+                  <div className="mt-2 text-base font-bold text-white/95">{x.ko ?? ''}</div>
                   {showEnglish && x.en ? <div className="mt-1 text-sm font-semibold text-white/70">{x.en}</div> : null}
                 </div>
                 <div className="flex gap-2">
@@ -207,15 +223,21 @@ export function WordbookScreen({
                 </div>
               </div>
 
-              {x.tags.length ? (
+              {tags.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {x.tags.map((tg) => (
+                  {tags.map((tg) => (
                     <Badge key={tg}>{tg}</Badge>
                   ))}
                 </div>
               ) : null}
 
-              {x.example ? <div className="mt-3 text-sm font-semibold text-white/85">{exampleLabel}: {x.example}</div> : null}
+              {x.example ? (
+                <div className="mt-3 space-y-1">
+                  <div className="text-sm font-semibold text-white/85">{exampleLabel}: {x.example}</div>
+                  {x.exampleKo ? <div className="text-xs font-semibold text-white/70 pl-2">→ {x.exampleKo}</div> : null}
+                  {x.exampleEn ? <div className="text-xs font-semibold text-white/60 pl-2">→ {x.exampleEn}</div> : null}
+                </div>
+              ) : null}
               {x.note ? <div className="mt-1 text-xs font-semibold text-white/65">{noteLabel}: {x.note}</div> : null}
             </div>
           )
@@ -253,35 +275,37 @@ export function WordbookScreen({
             </div>
           ) : null}
           <div className="space-y-1">
-            <div className="text-xs font-semibold text-white/70">{t('swahili', lang)} (sw) *</div>
-            <Input value={draft.sw} onChange={(e) => setDraft((d) => ({ ...d, sw: e.target.value }))} />
-          </div>
-          <div className="space-y-1">
             <div className="text-xs font-semibold text-white/70">{t('korean', lang)} (ko) *</div>
             <Input value={draft.ko} onChange={(e) => setDraft((d) => ({ ...d, ko: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-white/70">{t('swahili', lang)} (sw) *</div>
+            <Input value={draft.sw} onChange={(e) => setDraft((d) => ({ ...d, sw: e.target.value }))} />
           </div>
           <div className="space-y-1">
             <div className="text-xs font-semibold text-white/70">{t('english', lang)} (en)</div>
             <Input value={draft.en} onChange={(e) => setDraft((d) => ({ ...d, en: e.target.value }))} />
           </div>
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-white/70">{lang === 'sw' ? 'Aina ya neno' : '품사'} (pos)</div>
-            <Input value={draft.pos} onChange={(e) => setDraft((d) => ({ ...d, pos: e.target.value }))} />
-          </div>
           <div className="sm:col-span-2 space-y-1">
-            <div className="text-xs font-semibold text-white/70">{lang === 'sw' ? 'Lebo (comma)' : '태그 (쉼표로 구분)'}</div>
-            <Input value={draft.tags} onChange={(e) => setDraft((d) => ({ ...d, tags: e.target.value }))} />
-          </div>
-          <div className="sm:col-span-2 space-y-1">
-            <div className="text-xs font-semibold text-white/70">{t('example', lang)}</div>
-            <TextArea
+            <div className="text-xs font-semibold text-white/70">{lang === 'sw' ? 'Mfano (Kikorea)' : '예문 (한국어)'}</div>
+            <Input
               value={draft.example}
               onChange={(e) => setDraft((d) => ({ ...d, example: e.target.value }))}
             />
           </div>
           <div className="sm:col-span-2 space-y-1">
-            <div className="text-xs font-semibold text-white/70">{t('note', lang)}</div>
-            <TextArea value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} />
+            <div className="text-xs font-semibold text-white/70">{lang === 'sw' ? 'Mfano (Kiswahili)' : '예문 (스와힐리어)'}</div>
+            <Input
+              value={draft.exampleKo}
+              onChange={(e) => setDraft((d) => ({ ...d, exampleKo: e.target.value }))}
+            />
+          </div>
+          <div className="sm:col-span-2 space-y-1">
+            <div className="text-xs font-semibold text-white/70">{lang === 'sw' ? 'Mfano (Kiingereza)' : '예문 (영어)'}</div>
+            <Input
+              value={draft.exampleEn}
+              onChange={(e) => setDraft((d) => ({ ...d, exampleEn: e.target.value }))}
+            />
           </div>
         </div>
       </Modal>

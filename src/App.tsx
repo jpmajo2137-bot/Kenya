@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { Component, useEffect, useReducer, useRef, useState } from 'react'
 import { ToastProvider } from './components/Toast'
 import { cn } from './components/cn'
-import { loadState, saveState } from './lib/storage'
+import { loadState, loadStateAsync, saveState } from './lib/storage'
 import type { AppStateV2 } from './lib/types'
 import { createSeedState, reducer } from './app/state'
 import { t, type Lang } from './lib/i18n'
@@ -16,6 +16,60 @@ import { App as CapApp } from '@capacitor/app'
 
 type TopTab = AppStateV2['settings']['topTab']
 type BottomTab = AppStateV2['settings']['bottomTab']
+
+// ErrorBoundary for catching React errors
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+  errorInfo: string | null
+  componentStack: string | null
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null, errorInfo: null, componentStack: null }
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error, errorInfo: error.stack ?? null }
+  }
+
+  componentDidCatch(error: Error, errorInfo: { componentStack: string }) {
+    this.setState({ componentStack: errorInfo.componentStack })
+    console.error('[ErrorBoundary]', error.message, errorInfo.componentStack)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', background: '#7f1d1d', padding: 16, color: 'white', overflow: 'auto' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 12 }}>⚠️ 앱 오류 발생</h1>
+          <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <p style={{ fontWeight: 'bold', color: '#fca5a5', fontSize: 12 }}>오류 메시지:</p>
+            <p style={{ fontSize: 11, fontFamily: 'monospace', wordBreak: 'break-all' }}>{this.state.error?.message}</p>
+          </div>
+          <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <p style={{ fontWeight: 'bold', color: '#fca5a5', fontSize: 12 }}>컴포넌트 스택:</p>
+            <pre style={{ fontSize: 9, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 150, overflow: 'auto' }}>{this.state.componentStack}</pre>
+          </div>
+          <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, maxHeight: 150, overflow: 'auto' }}>
+            <p style={{ fontWeight: 'bold', color: '#fca5a5', fontSize: 12 }}>스택 트레이스:</p>
+            <pre style={{ fontSize: 9, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{this.state.errorInfo}</pre>
+          </div>
+          <button 
+            onClick={() => window.location.reload()} 
+            style={{ marginTop: 12, padding: '10px 20px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 8, fontWeight: 'bold', fontSize: 14 }}
+          >
+            앱 새로고침
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+// #endregion
 
 function useInitialState(): AppStateV2 {
   const loaded = loadState()
@@ -99,9 +153,29 @@ function NavButton({
 
 function AppInner() {
   const [state, dispatch] = useReducer(reducer, undefined, useInitialState)
+  const [hydrated, setHydrated] = useState(false)
   const [resetKey, setResetKey] = useState(0)
   const [langDetected, setLangDetected] = useState(!isFirstRun())
   const restoring = useRef(false)
+
+  // 암호화된 상태 비동기 로드 (초기 저장 덮어쓰기 방지)
+  useEffect(() => {
+    let cancelled = false
+    loadStateAsync()
+      .then((loaded) => {
+        if (cancelled) return
+        if (loaded) {
+          dispatch({ type: 'hydrate', state: loaded })
+        }
+        setHydrated(true)
+      })
+      .catch(() => {
+        if (!cancelled) setHydrated(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   
   // 첫 실행 시 언어 자동 감지
   useEffect(() => {
@@ -147,11 +221,9 @@ function AppInner() {
   // Android 하드웨어 뒤로가기 버튼 처리
   useEffect(() => {
     const handleBackButton = CapApp.addListener('backButton', ({ canGoBack }) => {
-      // 브라우저 히스토리가 있으면 뒤로 가기
       if (canGoBack) {
         window.history.back()
       } else {
-        // 히스토리가 없으면 (홈 화면) 앱 종료
         CapApp.exitApp()
       }
     })
@@ -161,17 +233,17 @@ function AppInner() {
     }
   }, [])
   
-  // 뒤로가기 시 단어장 접기
+  // 뒤로가기 시 - history.back()만 호출
   const goBack = () => {
-    setResetKey((k) => k + 1)
     if (window.history.length > 1) {
       window.history.back()
     }
   }
 
   useEffect(() => {
+    if (!hydrated) return
     saveState(state)
-  }, [state])
+  }, [state, hydrated])
 
   const topTab: TopTab = state.settings.topTab
   const bottomTab: BottomTab = state.settings.bottomTab
@@ -195,15 +267,15 @@ function AppInner() {
 
   // Back navigation handling: push history on tab change, popstate restores previous tab.
   useEffect(() => {
-    // 초기 상태 기록
-    window.history.replaceState({ topTab, bottomTab }, '')
+    window.history.replaceState({ topTab, bottomTab, type: 'tab' }, '')
     const onPopState = (e: PopStateEvent) => {
-      const st = e.state as { topTab?: TopTab; bottomTab?: BottomTab } | null
+      const st = e.state as { topTab?: TopTab; bottomTab?: BottomTab; type?: string; screen?: string; wrongNote?: string } | null
+      // screen/wrongNote state는 하위 컴포넌트가 처리
+      if (st?.screen || st?.wrongNote) return
+      // tab state만 처리
       if (st && st.topTab && st.bottomTab) {
         restoring.current = true
         dispatch({ type: 'settings', patch: { topTab: st.topTab, bottomTab: st.bottomTab } })
-      } else {
-        // state가 없으면 기본 브라우저 동작(앱 종료/이전 페이지) 허용
       }
     }
     window.addEventListener('popstate', onPopState)
@@ -215,8 +287,21 @@ function AppInner() {
       restoring.current = false
       return
     }
-    window.history.pushState({ topTab, bottomTab }, '')
+    window.history.pushState({ topTab, bottomTab, type: 'tab' }, '')
   }, [topTab, bottomTab])
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">📦</div>
+          <div className="text-white/70 text-lg font-semibold">
+            {state.settings.meaningLang === 'sw' ? 'Inapakia data...' : '데이터 불러오는 중...'}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // 첫 실행 시 언어 감지 중이면 로딩 화면 표시
   if (!langDetected) {
@@ -328,8 +413,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AppInner />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AppInner />
+      </ToastProvider>
+    </ErrorBoundary>
   )
 }
