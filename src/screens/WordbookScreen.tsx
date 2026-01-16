@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import type { VocabItem } from '../lib/types'
 import type { Action } from '../app/state'
 import { Badge } from '../components/Badge'
@@ -6,9 +6,9 @@ import { Button } from '../components/Button'
 import { Input } from '../components/TextField'
 import { Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
-import { isDue } from '../lib/srs'
 import type { Deck } from '../lib/types'
 import { t, type Lang } from '../lib/i18n'
+import { FlashcardScreen } from './FlashcardScreen'
 
 type Draft = {
   deckId: string
@@ -65,6 +65,30 @@ export function WordbookScreen({
   const [query, setQuery] = useState('')
   const allLabel = lang === 'sw' ? 'Yote' : '전체'
   const [tag, setTag] = useState<string>(allLabel)
+  const [flashcardMode, setFlashcardMode] = useState(false)
+
+  // 플래시카드 시작
+  const startFlashcard = useCallback(() => {
+    window.history.pushState({ screen: 'userDeckFlashcard' }, '')
+    setFlashcardMode(true)
+  }, [])
+
+  // 플래시카드 종료
+  const closeFlashcard = useCallback(() => {
+    setFlashcardMode(false)
+  }, [])
+
+  // 뒤로가기 핸들러
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      const state = e.state as { screen?: string } | null
+      if (flashcardMode && state?.screen !== 'userDeckFlashcard') {
+        setFlashcardMode(false)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [flashcardMode])
 
   const allTags = useMemo(() => {
     const set = new Set<string>()
@@ -156,9 +180,20 @@ export function WordbookScreen({
   const showingLabel = lang === 'sw' ? 'Inaonyeshwa' : '표시'
   const searchPlaceholder = lang === 'sw' ? 'Tafuta (sw/ko/en)' : '검색 (sw/ko/en)'
   const tagTip = lang === 'sw' ? 'Kidokezo: Tofautisha lebo na comma' : '팁: 태그는 "쉼표(,)"로 구분'
-  const dueLabel = lang === 'sw' ? 'Mapitio' : '복습대상'
   const exampleLabel = lang === 'sw' ? 'Mfano' : '예문'
   const noteLabel = lang === 'sw' ? 'Maelezo' : '메모'
+
+  // 플래시카드 모드
+  if (flashcardMode && items.length > 0) {
+    return (
+      <FlashcardScreen
+        lang={lang}
+        mode={lang === 'sw' ? 'sw' : 'ko'}
+        onClose={closeFlashcard}
+        userWords={items}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -170,9 +205,19 @@ export function WordbookScreen({
               {totalLabel} {items.length} · {showingLabel} {filtered.length}
             </div>
           </div>
-          <Button variant="primary" onClick={openCreate}>
-            {t('addWord', lang)}
-          </Button>
+          <div className="flex gap-2">
+            {items.length > 0 && (
+              <button
+                onClick={startFlashcard}
+                className="rounded-xl px-4 py-2 text-sm font-bold bg-gradient-to-r from-indigo-500/30 to-purple-500/30 text-white hover:from-indigo-500/50 hover:to-purple-500/50 active:scale-95 transition border border-indigo-400/30 touch-target"
+              >
+                📇 {lang === 'sw' ? 'Kadi' : '카드'}
+              </button>
+            )}
+            <Button variant="primary" onClick={openCreate}>
+              {t('addWord', lang)}
+            </Button>
+          </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <Input placeholder={searchPlaceholder} value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -196,7 +241,6 @@ export function WordbookScreen({
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((x) => {
           if (!x) return null
-          const due = x.srs ? isDue(x.srs) : false
           const tags = x.tags ?? []
           return (
             <div key={x.id} className="rounded-3xl p-5 app-card backdrop-blur">
@@ -204,11 +248,6 @@ export function WordbookScreen({
                 <div>
                   <div className="flex items-center gap-2">
                     <div className="text-2xl font-extrabold text-white">{x.sw ?? ''}</div>
-                    {due ? (
-                      <Badge className="border-[rgb(var(--green))]/25 bg-[rgb(var(--green))]/15 text-white">
-                        {dueLabel}
-                      </Badge>
-                    ) : null}
                   </div>
                   <div className="mt-2 text-base font-bold text-white/95">{x.ko ?? ''}</div>
                   {showEnglish && x.en ? <div className="mt-1 text-sm font-semibold text-white/70">{x.en}</div> : null}

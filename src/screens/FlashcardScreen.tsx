@@ -78,7 +78,8 @@ export function getWrongAnswerIds(): string[] {
 
 function AudioBtn({ url }: { url: string | null }) {
   if (!url) return null
-  const play = () => {
+  const play = (e: React.MouseEvent) => {
+    e.stopPropagation()
     const a = new Audio(url)
     void a.play()
   }
@@ -93,6 +94,37 @@ function AudioBtn({ url }: { url: string | null }) {
   )
 }
 
+// VocabItem을 CloudRow 형태로 변환
+type UserWord = {
+  id: string
+  sw: string
+  ko: string
+  en?: string
+  example?: string
+  exampleKo?: string
+  exampleEn?: string
+}
+
+function convertUserWordToCloudRow(item: UserWord, mode: Mode): CloudRow {
+  return {
+    id: item.id,
+    mode,
+    word: item.sw,
+    word_pronunciation: null,
+    word_audio_url: null,
+    image_url: null,
+    meaning_sw: null,
+    meaning_ko: item.ko,
+    meaning_en: item.en || null,
+    example: item.example || null,
+    example_pronunciation: null,
+    example_audio_url: null,
+    example_translation_sw: null,
+    example_translation_ko: item.exampleKo || null,
+    example_translation_en: item.exampleEn || null,
+  }
+}
+
 export function FlashcardScreen({
   lang,
   mode,
@@ -102,6 +134,7 @@ export function FlashcardScreen({
   onClose,
   wrongAnswerMode = false,
   wrongWordIds,
+  userWords,
 }: {
   lang: Lang
   mode: Mode
@@ -111,6 +144,7 @@ export function FlashcardScreen({
   onClose: () => void
   wrongAnswerMode?: boolean // 오답노트 모드
   wrongWordIds?: string[] // 특정 오답 단어 ID 목록 (Day별 학습용)
+  userWords?: UserWord[] // 사용자 단어 모드
 }) {
   const [words, setWords] = useState<CloudRow[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -120,13 +154,26 @@ export function FlashcardScreen({
   const [unknownCount, setUnknownCount] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
   const [wrongWords, setWrongWords] = useState<CloudRow[]>([]) // 이번 세션에서 틀린 단어들
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null) // 카드 넘김 애니메이션
+  const [isAnimating, setIsAnimating] = useState(false)
 
   // 뒤로가기는 부모 컴포넌트(AllWordsDayList)에서 처리
 
   useEffect(() => {
     const fetchWords = async () => {
-      if (!supabase) return
       setLoading(true)
+      
+      // 사용자 단어 모드
+      if (userWords && userWords.length > 0) {
+        const converted = userWords.map(w => convertUserWordToCloudRow(w, mode))
+        // 셔플
+        const shuffled = [...converted].sort(() => Math.random() - 0.5)
+        setWords(shuffled)
+        setLoading(false)
+        return
+      }
+      
+      if (!supabase) return
       
       // 오답노트 모드
       if (wrongAnswerMode) {
@@ -186,7 +233,7 @@ export function FlashcardScreen({
       setLoading(false)
     }
     void fetchWords()
-  }, [mode, levelFilter, dayNumber, wordsPerDay, wrongAnswerMode, wrongWordIds])
+  }, [mode, levelFilter, dayNumber, wordsPerDay, wrongAnswerMode, wrongWordIds, userWords])
 
   const currentWord = words[currentIndex]
 
@@ -194,17 +241,26 @@ export function FlashcardScreen({
     setIsFlipped((prev) => !prev)
   }, [])
 
-  const goToNext = useCallback(() => {
-    setIsFlipped(false)
-    setCurrentIndex((i) => {
-      if (i < words.length - 1) {
-        return i + 1
-      } else {
-        setIsComplete(true)
-        return i
-      }
-    })
-  }, [words.length])
+  const goToNext = useCallback((direction: 'left' | 'right' = 'left') => {
+    if (isAnimating) return
+    setIsAnimating(true)
+    setSlideDirection(direction)
+    
+    // 애니메이션 후 다음 카드로
+    setTimeout(() => {
+      setIsFlipped(false)
+      setCurrentIndex((i) => {
+        if (i < words.length - 1) {
+          return i + 1
+        } else {
+          setIsComplete(true)
+          return i
+        }
+      })
+      setSlideDirection(null)
+      setIsAnimating(false)
+    }, 300)
+  }, [words.length, isAnimating])
 
   const handleKnown = useCallback(() => {
     setKnownCount((c) => c + 1)
@@ -212,7 +268,7 @@ export function FlashcardScreen({
     if (currentWord) {
       removeFromWrongAnswers(currentWord.id)
     }
-    goToNext()
+    goToNext('left')
   }, [goToNext, currentWord])
 
   const handleUnknown = useCallback(() => {
@@ -222,7 +278,7 @@ export function FlashcardScreen({
       addToWrongAnswers(currentWord.id)
       setWrongWords((prev) => [...prev, currentWord])
     }
-    goToNext()
+    goToNext('left')
   }, [goToNext, currentWord])
 
   // 오답노트 모드: 외웠어요 (오답노트에서 제거)
@@ -231,13 +287,13 @@ export function FlashcardScreen({
     if (currentWord) {
       removeFromWrongAnswers(currentWord.id)
     }
-    goToNext()
+    goToNext('left')
   }, [goToNext, currentWord])
 
   // 오답노트 모드: 넘기기 (오답노트에서 제거 안함)
   const handleSkip = useCallback(() => {
     setUnknownCount((c) => c + 1)
-    goToNext()
+    goToNext('left')
   }, [goToNext])
 
   const handleRestart = () => {
@@ -432,8 +488,11 @@ export function FlashcardScreen({
       {/* Card */}
       <div className="flex-1 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
         <div 
-          onClick={handleFlip}
-          className="w-full max-w-md cursor-pointer perspective-1000"
+          onClick={!isAnimating ? handleFlip : undefined}
+          className={`w-full max-w-md cursor-pointer perspective-1000 transition-all duration-300 ease-out ${
+            slideDirection === 'left' ? 'opacity-0 -translate-x-full rotate-[-10deg]' :
+            slideDirection === 'right' ? 'opacity-0 translate-x-full rotate-[10deg]' : ''
+          }`}
         >
           <div 
             className={`relative w-full min-h-[320px] sm:min-h-[400px] rounded-3xl transition-transform duration-500 transform-style-preserve-3d ${
@@ -516,13 +575,15 @@ export function FlashcardScreen({
             <div className="flex gap-3 sm:gap-4 max-w-md mx-auto">
               <button
                 onClick={handleSkip}
-                className="flex-1 rounded-2xl bg-slate-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-slate-300 border-2 border-slate-500/30 hover:bg-slate-500/30 active:scale-95 transition touch-target"
+                disabled={isAnimating}
+                className="flex-1 rounded-2xl bg-slate-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-slate-300 border-2 border-slate-500/30 hover:bg-slate-500/30 active:scale-95 transition touch-target disabled:opacity-50"
               >
                 {lang === 'sw' ? '➡️ Ruka' : '➡️ 넘기기'}
               </button>
               <button
                 onClick={handleMastered}
-                className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target"
+                disabled={isAnimating}
+                className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target disabled:opacity-50"
               >
                 {lang === 'sw' ? '✅ Ondoa' : '✅ 오답노트 제거'}
               </button>
@@ -532,13 +593,15 @@ export function FlashcardScreen({
             <div className="flex gap-3 sm:gap-4 max-w-md mx-auto">
               <button
                 onClick={handleUnknown}
-                className="flex-1 rounded-2xl bg-rose-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-rose-400 border-2 border-rose-500/30 hover:bg-rose-500/30 active:scale-95 transition touch-target"
+                disabled={isAnimating}
+                className="flex-1 rounded-2xl bg-rose-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-rose-400 border-2 border-rose-500/30 hover:bg-rose-500/30 active:scale-95 transition touch-target disabled:opacity-50"
               >
                 {lang === 'sw' ? '❌ Sijui' : '❌ 몰라요'}
               </button>
               <button
                 onClick={handleKnown}
-                className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target"
+                disabled={isAnimating}
+                className="flex-1 rounded-2xl bg-emerald-500/20 py-4 sm:py-5 text-lg sm:text-xl font-bold text-emerald-400 border-2 border-emerald-500/30 hover:bg-emerald-500/30 active:scale-95 transition touch-target disabled:opacity-50"
               >
                 {lang === 'sw' ? '✅ Najua' : '✅ 알아요'}
               </button>

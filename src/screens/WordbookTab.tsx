@@ -183,23 +183,6 @@ export function WordbookTab({
     return safeItems.filter((x) => x?.deckId === selectedDeckId)
   }, [safeItems, selectedDeckId, selectedDeck?.name])
 
-  const dueInDeck = useMemo(() => {
-    if (!selectedDeckId) return 0
-    const isAllWords = selectedDeck?.name === '모든 단어'
-    if (isAllWords) {
-      return safeItems.filter((x) => {
-        if (!x?.srs) return false
-        const dueAt = x.srs.dueAt
-        return typeof dueAt === 'number' && dueAt <= safeNow
-      }).length
-    }
-    return safeItems.filter((x) => {
-      if (!x || x.deckId !== selectedDeckId || !x.srs) return false
-      const dueAt = x.srs.dueAt
-      return typeof dueAt === 'number' && dueAt <= safeNow
-    }).length
-  }, [safeItems, selectedDeckId, safeNow, selectedDeck?.name])
-
   const [createOpen, setCreateOpen] = useState(false)
   const [deckName, setDeckName] = useState('')
 
@@ -216,7 +199,6 @@ export function WordbookTab({
   }
 
   const wordsLabel = lang === 'sw' ? 'maneno' : '개 단어'
-  const reviewLabel = lang === 'sw' ? 'Mapitio' : '복습'
   
   const translateDeckName = (name: string | undefined | null): string => {
     if (!name) return '(이름 없음)'
@@ -339,7 +321,6 @@ export function WordbookTab({
             {!isCloudDeck && (
               <div className="mt-1.5 sm:mt-2 flex flex-wrap gap-1.5 sm:gap-2">
                 <span className="app-chip">📚 {String(itemsInDeck.length)} {wordsLabel}</span>
-                <span className="app-chip">⏰ {reviewLabel} {String(dueInDeck)}</span>
               </div>
             )}
           </div>
@@ -355,6 +336,7 @@ export function WordbookTab({
             showEnglish={showEnglish}
             levelFilter={levelFilter}
             title={translateDeckName(selectedDeck.name)}
+            userItems={safeItems}
           />
         ) : (
           <WordbookScreen
@@ -506,17 +488,10 @@ export function WordbookTab({
               const deckName = String(d?.name ?? '')
               const isCloud = deckName in CLOUD_DECK_LEVELS
               
+              const cloudCount = cloudCounts[deckName] ?? 0
               const count = isCloud 
-                ? (cloudCounts[deckName] ?? 0)
+                ? (deckName === '모든 단어' ? cloudCount + safeItems.length : cloudCount)
                 : safeItems.filter((x) => x?.deckId === deckId).length
-              
-              const due = isCloud
-                ? 0
-                : safeItems.filter((x) => {
-                    if (!x || x.deckId !== deckId || !x.srs) return false
-                    const dueAt = x.srs.dueAt
-                    return typeof dueAt === 'number' && dueAt <= safeNow
-                  }).length
               
               return (
                 <button
@@ -528,7 +503,6 @@ export function WordbookTab({
                     <div className="text-xl sm:text-2xl font-extrabold text-white truncate">{translateDeckName(deckName)}</div>
                     <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2">
                       <span className="app-chip">📚 {String(count)} {wordsLabel}</span>
-                      {!isCloud && <span className="app-chip">⏰ {reviewLabel} {String(due)}</span>}
                     </div>
                   </div>
                   <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl border border-white/15 bg-white/8 text-white/70 shrink-0 ml-2">

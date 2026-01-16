@@ -4,6 +4,7 @@ import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import { CloudAllWordsScreen } from './CloudAllWordsScreen'
 import { FlashcardScreen, getWrongAnswersCount } from './FlashcardScreen'
+import type { VocabItem } from '../lib/types'
 
 const WORDS_PER_DAY = 40
 
@@ -15,16 +16,19 @@ export function AllWordsDayList({
   showEnglish,
   levelFilter = '',
   title,
+  userItems = [],
 }: {
   lang: Lang
   mode: Mode
   showEnglish: boolean
   levelFilter?: string
   title?: string
+  userItems?: VocabItem[]
 }) {
   const [totalCount, setTotalCount] = useState(0)
   const [selectedDay, setSelectedDayState] = useState<number | null>(null)
   const [flashcardDay, setFlashcardDayState] = useState<number | null>(null)
+  const [userFlashcardMode, setUserFlashcardMode] = useState(false)
   const [loading, setLoading] = useState(true)
   const [, setWrongCount] = useState(getWrongAnswersCount())
 
@@ -49,8 +53,14 @@ export function AllWordsDayList({
     setFlashcardDayState(day)
   }
 
+  const startUserFlashcard = () => {
+    window.history.pushState({ screen: 'userFlashcard' }, '')
+    setUserFlashcardMode(true)
+  }
+
   const closeFlashcard = useCallback(() => {
     setFlashcardDayState(null)
+    setUserFlashcardMode(false)
     setWrongCount(getWrongAnswersCount())
   }, [])
 
@@ -58,6 +68,13 @@ export function AllWordsDayList({
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
       const state = e.state as { screen?: string } | null
+      
+      // 사용자 단어 flashcard에서 뒤로가기
+      if (userFlashcardMode && state?.screen !== 'userFlashcard') {
+        setUserFlashcardMode(false)
+        setWrongCount(getWrongAnswersCount())
+        return
+      }
       
       // flashcard에서 뒤로가기
       if (flashcardDay !== null && state?.screen !== 'flashcard') {
@@ -75,7 +92,7 @@ export function AllWordsDayList({
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [flashcardDay, selectedDay])
+  }, [flashcardDay, selectedDay, userFlashcardMode])
 
   useEffect(() => {
     const fetchCount = async () => {
@@ -103,6 +120,18 @@ export function AllWordsDayList({
   }, [mode, levelFilter])
 
   const totalDays = Math.ceil(totalCount / WORDS_PER_DAY)
+
+  // 사용자 단어 플래시카드 모드
+  if (userFlashcardMode && userItems && userItems.length > 0) {
+    return (
+      <FlashcardScreen
+        lang={lang}
+        mode={mode}
+        onClose={closeFlashcard}
+        userWords={userItems}
+      />
+    )
+  }
 
   // 플래시카드 모드
   if (flashcardDay !== null) {
@@ -226,6 +255,56 @@ export function AllWordsDayList({
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* 사용자 단어 섹션 - 모든 단어일 때만 표시 */}
+      {!levelFilter && userItems.length > 0 && (
+        <div className="rounded-3xl p-4 sm:p-5 app-card backdrop-blur mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-lg sm:text-xl font-extrabold text-white">
+                📝 {lang === 'sw' ? 'Maneno Yangu' : '내가 추가한 단어'}
+              </div>
+              <div className="text-xs sm:text-sm font-semibold text-white/60 mt-1">
+                {lang === 'sw' 
+                  ? `${userItems.length} maneno (yamehifadhiwa kwenye kifaa)`
+                  : `${userItems.length}개 단어 (기기에 저장됨)`}
+              </div>
+            </div>
+            <button
+              onClick={startUserFlashcard}
+              className="rounded-xl px-4 py-2 text-sm font-bold bg-gradient-to-r from-indigo-500/30 to-purple-500/30 text-white hover:from-indigo-500/50 hover:to-purple-500/50 active:scale-95 transition border border-indigo-400/30 touch-target"
+            >
+              📇 {lang === 'sw' ? 'Kadi' : '카드'}
+            </button>
+          </div>
+          <div className="space-y-2">
+            {userItems.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-xl p-3 bg-white/5 border border-white/10"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-extrabold text-white">{item.sw}</div>
+                    <div className="text-sm font-semibold text-white/80 mt-0.5">{item.ko}</div>
+                    {showEnglish && item.en && (
+                      <div className="text-xs text-white/60 mt-0.5">{item.en}</div>
+                    )}
+                  </div>
+                </div>
+                {item.example && (
+                  <div className="mt-2 pt-2 border-t border-white/10">
+                    <div className="text-xs text-cyan-400">{item.example}</div>
+                    {item.exampleKo && (
+                      <div className="text-xs text-white/60 mt-0.5">{item.exampleKo}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
