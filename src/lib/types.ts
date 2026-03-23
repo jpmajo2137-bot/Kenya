@@ -59,7 +59,7 @@ export type AppSettings = {
   /** 상단 탭 */
   topTab: 'home' | 'settings'
   /** 하단 탭 */
-  bottomTab: 'wordbook' | 'quiz' | 'wrong'
+  bottomTab: 'wordbook' | 'quiz' | 'wrong' | 'dictionary'
 
   /** 퀴즈 설정 기본값 */
   quizCount: 5 | 10 | 20 | 50

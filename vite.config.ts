@@ -2,18 +2,29 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import legacy from '@vitejs/plugin-legacy'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // 구형 브라우저 지원 (갤럭시 노트5, 구형 아이폰 등)
+  build: {
+    target: ['es2015', 'chrome58', 'safari11'],
+  },
   plugins: [
     tailwindcss(),
     react(),
+    // 구형 브라우저 지원 (Android 4.4+, iOS 9+)
+    legacy({
+      targets: ['Android >= 4.4', 'iOS >= 9', 'Chrome >= 43', 'Safari >= 9', 'ie >= 11'],
+      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
+      modernPolyfills: true,
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'vite.svg'],
       manifest: {
-        name: 'K-Kiswahili-Words',
-        short_name: 'K-Kiswahili',
+        name: 'Kikorea Kiswahili Maneno',
+        short_name: 'KK Maneno',
         description: 'Swahili & Korean Vocabulary Learning App',
         theme_color: '#070a12',
         background_color: '#070a12',

@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import type { Deck } from '../lib/types'
 import { t, type Lang } from '../lib/i18n'
+import { GLOBAL_WORD_EXCLUSIONS } from '../lib/filterUtils'
 import { FlashcardScreen } from './FlashcardScreen'
 
 type Draft = {
@@ -102,6 +103,7 @@ export function WordbookScreen({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return items
+      .filter((x) => x && !GLOBAL_WORD_EXCLUSIONS.includes(x.sw ?? ''))
       .filter((x) => {
         if (!x) return false
         const tags = x.tags ?? []

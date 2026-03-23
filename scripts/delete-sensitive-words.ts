@@ -9,13 +9,17 @@ const supabase = createClient(
 )
 
 async function deleteWords() {
-  // 삭제할 단어 ID 목록
+  // 삭제할 단어 ID 목록 (성적인/민감한 단어)
   const idsToDelete = [
     'd823e024-5f8e-4161-9067-82820ee92124', // kondomu (콘돔)
     '5baf8f55-5133-4207-8a79-f90dfdc04fd5', // 섹시하다
     '42991b9c-8c74-4c06-b727-10942f41bdf5', // seksi
     '7f2af359-39d4-4b05-a314-580955a76b5c', // 불륜
     '3b5bf904-50e6-44c6-a990-e832bd21fd5f', // uhusiano wa siri (불륜)
+    'b0ab526e-a198-47bd-bef2-0fa51b44f6a3', // 성적인 (sexual)
+    'bc6ffb85-bdde-422d-9049-37c881bd7561', // 성적 지향 (sexuality)
+    '5b84299a-9721-4bb0-a66e-c2054133a94d', // kingono (sexual)
+    '1e69f608-0abb-403c-93f8-73cad743df0d', // ujinsia (sexuality)
   ]
 
   console.log('🗑️ 민감한 단어 삭제 중...\n')

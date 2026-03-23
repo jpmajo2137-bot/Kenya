@@ -66,22 +66,6 @@ export async function gcpSynthesizeSpeech(
     })
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/22b9e1a6-367e-484f-b3b6-8f1412235620', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'verify',
-      hypothesisId: 'G',
-      location: 'gcpTts:gcpSynthesizeSpeech:start',
-      message: 'google tts start',
-      data: { language, voiceName, textLength: text.length },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
-
   let res = await callTts(payload)
 
   if (!res.ok) {
@@ -109,22 +93,6 @@ export async function gcpSynthesizeSpeech(
   }
 
   const audio = base64ToArrayBuffer(json.audioContent)
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/22b9e1a6-367e-484f-b3b6-8f1412235620', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'verify',
-      hypothesisId: 'G',
-      location: 'gcpTts:gcpSynthesizeSpeech:success',
-      message: 'google tts success',
-      data: { language, voiceName, byteLength: audio.byteLength, rate: speakingRate },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
 
   return { audio, voiceName, rate: speakingRate }
 }

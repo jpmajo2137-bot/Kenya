@@ -1,13 +1,13 @@
 /**
- * 오프라인 캐시 모듈 - IndexedDB를 사용하여 단어 데이터를 로컬에 저장
- * 보안: 데이터 무결성 검증 포함
+ * 오프라인 캐시 모듈 - IndexedDB를 사용하여 단어 데이터를 로컬에서 읽기
+ * 캐시된 데이터 읽기 전용 (다운로드 기능 제거됨)
  */
 
 const DB_NAME = 'k-kiswahili-offline'
-const DB_VERSION = 2 // 보안 업데이트
+const DB_VERSION = 3
 const STORE_NAME = 'vocab'
 const META_STORE = 'meta'
-const INTEGRITY_STORE = 'integrity'
+const MEDIA_STORE = 'media'
 
 type Mode = 'sw' | 'ko'
 
@@ -45,74 +45,7 @@ export interface CachedVocab {
   created_at: string
 }
 
-interface CacheMeta {
-  key: string
-  lastUpdated: number
-  count: number
-  checksum?: string // 데이터 무결성 검증용
-}
-
-interface IntegrityRecord {
-  id: string
-  hash: string
-  timestamp: number
-}
-
 let dbPromise: Promise<IDBDatabase> | null = null
-
-/**
- * 간단한 해시 함수 (데이터 무결성 검증용)
- */
-async function computeHash(data: string): Promise<string> {
-  try {
-    const encoder = new TextEncoder()
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data))
-    return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-  } catch {
-    // 폴백: 간단한 체크섬
-    let hash = 0
-    for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
-      hash = hash & hash
-    }
-    return hash.toString(16)
-  }
-}
-
-/**
- * 데이터 유효성 검사
- */
-function validateVocabItem(item: unknown): item is CachedVocab {
-  if (!item || typeof item !== 'object') return false
-  const v = item as Record<string, unknown>
-  
-  // 필수 필드 검사
-  if (typeof v.id !== 'string' || v.id.length === 0) return false
-  if (typeof v.word !== 'string') return false
-  if (v.mode !== 'sw' && v.mode !== 'ko') return false
-  
-  // XSS 방지: 스크립트 태그 차단
-  const dangerousPattern = /<script|javascript:|on\w+=/i
-  if (typeof v.word === 'string' && dangerousPattern.test(v.word)) return false
-  
-  return true
-}
-
-/**
- * 문자열 살균 (XSS 방지)
- * 향후 데이터 표시 시 사용 가능
- */
-export function sanitizeString(str: string | null | undefined): string | null {
-  if (!str) return null
-  // HTML 엔티티 이스케이프
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
 
 /**
  * IndexedDB 연결 가져오기
@@ -142,84 +75,15 @@ function getDB(): Promise<IDBDatabase> {
         db.createObjectStore(META_STORE, { keyPath: 'key' })
       }
 
-      // 무결성 정보 저장소
-      if (!db.objectStoreNames.contains(INTEGRITY_STORE)) {
-        db.createObjectStore(INTEGRITY_STORE, { keyPath: 'id' })
+      // 미디어 저장소
+      if (!db.objectStoreNames.contains(MEDIA_STORE)) {
+        const mediaStore = db.createObjectStore(MEDIA_STORE, { keyPath: 'url' })
+        mediaStore.createIndex('type', 'type', { unique: false })
       }
     }
   })
 
   return dbPromise
-}
-
-/**
- * 모든 단어 데이터를 로컬에 저장 (보안 강화)
- */
-export async function saveVocabToCache(
-  mode: Mode,
-  category: string | null,
-  data: CachedVocab[]
-): Promise<void> {
-  const db = await getDB()
-  const tx = db.transaction([STORE_NAME, META_STORE, INTEGRITY_STORE], 'readwrite')
-  const store = tx.objectStore(STORE_NAME)
-  const metaStore = tx.objectStore(META_STORE)
-  const integrityStore = tx.objectStore(INTEGRITY_STORE)
-
-  // 기존 데이터 삭제 (같은 mode/category)
-  const index = store.index('mode_category')
-  const range = IDBKeyRange.only([mode, category ?? ''])
-  
-  // 기존 데이터 삭제를 위한 커서
-  const deleteRequest = index.openCursor(range)
-  deleteRequest.onsuccess = (event) => {
-    const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result
-    if (cursor) {
-      cursor.delete()
-      cursor.continue()
-    }
-  }
-
-  // 데이터 검증 및 살균 후 저장
-  let validCount = 0
-  for (const item of data) {
-    // 데이터 유효성 검사
-    if (!validateVocabItem(item)) {
-      console.warn('유효하지 않은 데이터 건너뜀:', (item as { id?: string })?.id ?? 'unknown')
-      continue
-    }
-
-    // 데이터 저장 (카테고리 기본값 처리)
-    store.put({ ...item, category: item.category ?? '' })
-    validCount++
-
-    // 무결성 해시 저장 (비동기)
-    computeHash(JSON.stringify(item)).then(hash => {
-      integrityStore.put({
-        id: item.id,
-        hash,
-        timestamp: Date.now(),
-      } satisfies IntegrityRecord)
-    }).catch(() => {
-      // 해시 생성 실패 시 무시
-    })
-  }
-
-  // 메타 정보 업데이트 (체크섬 포함)
-  const metaKey = `${mode}_${category ?? 'all'}`
-  const checksum = await computeHash(`${mode}_${category}_${validCount}_${Date.now()}`)
-  
-  metaStore.put({
-    key: metaKey,
-    lastUpdated: Date.now(),
-    count: validCount,
-    checksum,
-  } satisfies CacheMeta)
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
-  })
 }
 
 /**
@@ -229,7 +93,8 @@ export async function getVocabFromCache(
   mode: Mode,
   category?: string | null,
   dayNumber?: number,
-  wordsPerDay: number = 40
+  wordsPerDay: number = 40,
+  posFilter?: string | null,
 ): Promise<CachedVocab[]> {
   const db = await getDB()
   const tx = db.transaction(STORE_NAME, 'readonly')
@@ -238,7 +103,7 @@ export async function getVocabFromCache(
   return new Promise((resolve, reject) => {
     let request: IDBRequest
 
-    if (category) {
+    if (category && !posFilter) {
       const index = store.index('mode_category')
       request = index.getAll(IDBKeyRange.only([mode, category]))
     } else {
@@ -248,11 +113,13 @@ export async function getVocabFromCache(
 
     request.onsuccess = () => {
       let data = request.result as CachedVocab[]
+
+      if (posFilter) {
+        data = data.filter((r) => (r as unknown as Record<string, unknown>).pos === posFilter)
+      }
       
-      // created_at으로 정렬
       data.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-      // Day 번호가 있으면 해당 범위만 반환
       if (dayNumber) {
         const startIdx = (dayNumber - 1) * wordsPerDay
         const endIdx = startIdx + wordsPerDay
@@ -314,7 +181,16 @@ export async function getVocabByIds(ids: string[]): Promise<CachedVocab[]> {
 /**
  * 캐시된 단어 개수 가져오기
  */
-export async function getCacheCount(mode: Mode, category?: string | null): Promise<number> {
+export async function getCacheCount(
+  mode: Mode,
+  category?: string | null,
+  posFilter?: string | null,
+): Promise<number> {
+  if (posFilter) {
+    const data = await getVocabFromCache(mode, undefined, undefined, 40, posFilter)
+    return data.length
+  }
+
   const db = await getDB()
   const tx = db.transaction(STORE_NAME, 'readonly')
   const store = tx.objectStore(STORE_NAME)
@@ -336,86 +212,20 @@ export async function getCacheCount(mode: Mode, category?: string | null): Promi
 }
 
 /**
- * 캐시 메타 정보 가져오기
+ * 캐시된 미디어 파일 가져오기
  */
-export async function getCacheMeta(mode: Mode, category?: string | null): Promise<CacheMeta | null> {
+export async function getMediaFromCache(url: string): Promise<Blob | null> {
   const db = await getDB()
-  const tx = db.transaction(META_STORE, 'readonly')
-  const store = tx.objectStore(META_STORE)
-
-  const metaKey = `${mode}_${category ?? 'all'}`
+  const tx = db.transaction(MEDIA_STORE, 'readonly')
+  const store = tx.objectStore(MEDIA_STORE)
 
   return new Promise((resolve, reject) => {
-    const request = store.get(metaKey)
-    request.onsuccess = () => resolve(request.result ?? null)
+    const request = store.get(url)
+    request.onsuccess = () => {
+      const result = request.result as { data: Blob } | undefined
+      resolve(result?.data ?? null)
+    }
     request.onerror = () => reject(request.error)
-  })
-}
-
-/**
- * 전체 캐시 삭제
- */
-export async function clearAllCache(): Promise<void> {
-  const db = await getDB()
-  const tx = db.transaction([STORE_NAME, META_STORE], 'readwrite')
-  
-  tx.objectStore(STORE_NAME).clear()
-  tx.objectStore(META_STORE).clear()
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
-  })
-}
-
-/**
- * 캐시 상태 정보 가져오기
- */
-export async function getCacheStatus(): Promise<{
-  totalCount: number
-  swCount: number
-  koCount: number
-  lastUpdated: number | null
-}> {
-  const db = await getDB()
-  const tx = db.transaction([STORE_NAME, META_STORE], 'readonly')
-  const store = tx.objectStore(STORE_NAME)
-  const metaStore = tx.objectStore(META_STORE)
-
-  const swIndex = store.index('mode')
-  
-  return new Promise((resolve, reject) => {
-    let swCount = 0
-    let koCount = 0
-    let lastUpdated: number | null = null
-
-    const swRequest = swIndex.count(IDBKeyRange.only('sw'))
-    swRequest.onsuccess = () => {
-      swCount = swRequest.result
-    }
-
-    const koRequest = swIndex.count(IDBKeyRange.only('ko'))
-    koRequest.onsuccess = () => {
-      koCount = koRequest.result
-    }
-
-    const metaRequest = metaStore.getAll()
-    metaRequest.onsuccess = () => {
-      const metas = metaRequest.result as CacheMeta[]
-      if (metas.length > 0) {
-        lastUpdated = Math.max(...metas.map(m => m.lastUpdated))
-      }
-    }
-
-    tx.oncomplete = () => {
-      resolve({
-        totalCount: swCount + koCount,
-        swCount,
-        koCount,
-        lastUpdated,
-      })
-    }
-    tx.onerror = () => reject(tx.error)
   })
 }
 

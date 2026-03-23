@@ -77,6 +77,7 @@ CRITICAL REQUIREMENTS:
 - All English meanings must have IPA pronunciation
 - Swahili translations must be natural and accurate
 - Examples should be practical daily-use sentences
+- For Korean verbs ending in -하다 (e.g. 중요하다, 필요하다), give meaning_sw in VERB form: use "kuwa + adjective" (e.g. kuwa muhimu for 중요하다) and meaning_en as "to be + adjective" (e.g. to be important). Do not use only the adjective.
 
 Return as valid JSON array.`
   } else {

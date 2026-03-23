@@ -24,6 +24,7 @@ export function createSeedState(now = Date.now()): AppStateV2 {
     '비즈니스',
     '쇼핑',
     '위기탈출',
+    '사전',
   ]
 
   const decks: Deck[] = deckNames.map((name, i) => ({

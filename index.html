@@ -13,7 +13,7 @@
       font-src 'self' https://fonts.gstatic.com data:;
       img-src 'self' data: blob: https: http:;
       media-src 'self' blob: https:;
-      connect-src 'self' https://*.supabase.co https://*.supabase.com https://api.openai.com https://texttospeech.googleapis.com https://ip-api.com https://www.google-analytics.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.firebaseio.com https://*.firebase.google.com wss://*.supabase.co;
+      connect-src 'self' https://*.supabase.co https://*.supabase.com https://api.openai.com https://texttospeech.googleapis.com https://generativelanguage.googleapis.com https://*.tts.speech.microsoft.com https://ip-api.com https://ipapi.co https://www.google-analytics.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.firebaseio.com https://*.firebase.google.com wss://*.supabase.co;
       frame-src 'self' https://googleads.g.doubleclick.net https://www.google.com https://tpc.googlesyndication.com;
       object-src 'none';
       base-uri 'self';
@@ -23,9 +23,6 @@
     
     <!-- 보안: X-Content-Type-Options -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    
-    <!-- 보안: X-Frame-Options -->
-    <meta http-equiv="X-Frame-Options" content="SAMEORIGIN" />
     
     <!-- 보안: Referrer Policy -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
@@ -44,10 +41,12 @@
     <!-- 테마 색상 -->
     <meta name="theme-color" content="#070a12" />
     
-    <title>K-Kiswahili-Words</title>
+    <title>Kikorea Kiswahili Maneno</title>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin:0;min-height:100vh;background:#070a12;color:#f3f4f6">
+    <div id="root" style="min-height:100vh;background:#070a12;display:flex;align-items:center;justify-content:center">
+      <div style="text-align:center;color:rgba(255,255,255,0.7)">로딩 중...</div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

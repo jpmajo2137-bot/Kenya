@@ -65,6 +65,7 @@ const DEFAULT_DECK_NAMES = [
   '비즈니스',
   '쇼핑',
   '위기탈출',
+  '사전',
 ]
 
 function ensureDefaultDecks(state: AppStateV2): AppStateV2 {

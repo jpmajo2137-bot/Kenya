@@ -2,6 +2,10 @@
 # K-Kiswahili-Words .gitignore
 # =========================================
 
+# Secret-containing scripts
+fix-all-parens.mjs
+fix-word-output.txt
+
 # Environment variables (민감한 키 보호)
 .env
 .env.local

@@ -1,5 +1,6 @@
 import { supabase, type GeneratedVocab, type VocabMode } from './supabase'
-import { generateVocabulary, generateSpeech, CATEGORIES } from './openai'
+import { generateVocabulary, CATEGORIES } from './openai'
+import { azureSynthesizeSpeech } from './azureTts'
 
 // ===========================================
 // Vocabulary Generator Service
@@ -111,14 +112,14 @@ export async function generateAndSaveVocabulary(config: GenerationConfig): Promi
       config.onProgress?.(status)
 
       try {
-        // 단어 음성
+        // 단어 음성 (Azure TTS 사용)
         const wordLang = config.mode === 'ko' ? 'sw' : 'ko'
-        const wordAudio = await generateSpeech(vocab.word, wordLang)
+        const wordAudio = await azureSynthesizeSpeech(vocab.word, wordLang)
         vocab.word_audio_url = await uploadAudio(wordAudio, `${config.mode}/${vocab.word}_word.mp3`)
         status.completed++
 
-        // 뜻 음성 (메인 언어)
-        const meaningAudio = await generateSpeech(
+        // 뜻 음성 (메인 언어, Azure TTS 사용)
+        const meaningAudio = await azureSynthesizeSpeech(
           config.mode === 'ko' ? vocab.meaning_ko : vocab.meaning_sw,
           config.mode === 'ko' ? 'ko' : 'sw'
         )
@@ -129,14 +130,14 @@ export async function generateAndSaveVocabulary(config: GenerationConfig): Promi
         }
         status.completed++
 
-        // 예문 음성
+        // 예문 음성 (Azure TTS 사용)
         const exampleLang = config.mode === 'ko' ? 'sw' : 'ko'
-        const exampleAudio = await generateSpeech(vocab.example, exampleLang)
+        const exampleAudio = await azureSynthesizeSpeech(vocab.example, exampleLang)
         vocab.example_audio_url = await uploadAudio(exampleAudio, `${config.mode}/${vocab.word}_example.mp3`)
         status.completed++
 
-        // 영어 뜻 음성
-        const enAudio = await generateSpeech(vocab.meaning_en, 'en')
+        // 영어 뜻 음성 (Azure TTS 사용)
+        const enAudio = await azureSynthesizeSpeech(vocab.meaning_en, 'en')
         vocab.meaning_en_audio_url = await uploadAudio(enAudio, `${config.mode}/${vocab.word}_meaning_en.mp3`)
         status.completed++
 

@@ -1,4 +1,4 @@
-﻿import OpenAI from 'openai'
+import OpenAI from 'openai'
 import { env } from './env'
 
 // OpenAI client
@@ -42,6 +42,7 @@ Return as valid JSON array.`
 
 const SYSTEM_PROMPT_KO = `You are an expert linguist specializing in Swahili (Kiswahili) and Korean languages.
 Your task is to generate high-quality vocabulary entries for Korean speakers learning Swahili.
+- For Korean verbs ending in -하다 (e.g. 중요하다, 필요하다), give Swahili and English meanings in VERB form: use "kuwa + adjective" in Swahili (e.g. kuwa muhimu for 중요하다) and "to be + adjective" in English (e.g. to be important). Do not use only the adjective (e.g. not "muhimu" or "important" alone).
 Return as valid JSON array.`
 
 const CATEGORIES = [
@@ -99,9 +100,9 @@ Difficulty level: ${request.difficulty}/5`
 export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer'
 
 const VOICE_MAP: Record<string, TTSVoice> = {
-  sw: 'onyx',
+  sw: 'nova',  // 여성 (onyx는 남성)
   ko: 'nova',
-  en: 'alloy',
+  en: 'nova',  // 여성 목소리
 }
 
 export async function generateSpeech(
@@ -203,6 +204,7 @@ export async function generateWordImage(
   }
 
   try {
+    // gpt-image-1은 b64_json만 지원, dall-e-3는 url 지원
     const response = await openai.images.generate({
       model: 'gpt-image-1',
       prompt: `A simple, clean illustration representing the word "${word}" which means "${meaning}". Educational vocabulary flashcard style, minimal background, clear visual.`,
@@ -210,12 +212,16 @@ export async function generateWordImage(
       size: '1024x1024',
     })
     const data = response.data
-    if (data && data[0] && data[0].url) {
-      return data[0].url
+    if (data && data[0]) {
+      // URL이 있으면 사용
+      if (data[0].url) return data[0].url
+      // base64 응답이면 data URL로 변환
+      const b64 = (data[0] as Record<string, unknown>).b64_json as string | undefined
+      if (b64) return `data:image/png;base64,${b64}`
     }
-    return null
+    throw new Error('No image data in response')
   } catch (error) {
     console.error('Image generation failed:', error)
-    return null
+    throw error
   }
 }

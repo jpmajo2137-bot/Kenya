@@ -10,9 +10,13 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { WordbookTab } from './screens/WordbookTab'
 import { QuizScreen } from './screens/QuizScreen'
 import { WrongNoteScreen } from './screens/WrongNoteScreen'
+import { DictionaryScreen } from './screens/DictionaryScreen'
 import { isFirstRun, markFirstRunDone, detectInitialLang } from './lib/detectLang'
 import { startAdMobService, stopAdTimer } from './lib/admob'
 import { App as CapApp } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
+import { checkForUpdate, type UpdateInfo } from './lib/appUpdate'
+import { UpdateModal } from './components/UpdateModal'
 
 type TopTab = AppStateV2['settings']['topTab']
 type BottomTab = AppStateV2['settings']['bottomTab']
@@ -88,7 +92,7 @@ function PillButton({
   return (
     <button
       className={cn(
-        'h-10 sm:h-11 rounded-2xl px-2 sm:px-4 text-xs sm:text-sm font-bold tracking-tight transition active:scale-95 touch-target',
+        'h-12 sm:h-11 rounded-2xl px-3 sm:px-4 text-sm sm:text-sm font-bold tracking-tight transition active:scale-95 touch-target',
         active
           ? 'bg-[rgb(var(--purple))] text-white ring-2 ring-white/30'
           : 'bg-[rgb(90,105,140)] text-white hover:bg-[rgb(110,125,160)] ring-1 ring-white/25',
@@ -157,6 +161,10 @@ function AppInner() {
   const [resetKey, setResetKey] = useState(0)
   const [langDetected, setLangDetected] = useState(!isFirstRun())
   const restoring = useRef(false)
+  
+  // 앱 업데이트 상태
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
 
   // 암호화된 상태 비동기 로드 (초기 저장 덮어쓰기 방지)
   useEffect(() => {
@@ -167,10 +175,16 @@ function AppInner() {
         if (loaded) {
           dispatch({ type: 'hydrate', state: loaded })
         }
+        // 앱 시작 시 항상 홈 화면으로
+        dispatch({ type: 'settings', patch: { topTab: 'home', bottomTab: 'wordbook' } })
         setHydrated(true)
       })
       .catch(() => {
-        if (!cancelled) setHydrated(true)
+        if (!cancelled) {
+          // 앱 시작 시 항상 홈 화면으로
+          dispatch({ type: 'settings', patch: { topTab: 'home', bottomTab: 'wordbook' } })
+          setHydrated(true)
+        }
       })
     return () => {
       cancelled = true
@@ -218,8 +232,30 @@ function AppInner() {
     }
   }, [])
 
-  // Android 하드웨어 뒤로가기 버튼 처리
+  // 앱 업데이트 확인 (hydrated 후 실행)
   useEffect(() => {
+    if (!hydrated) return
+    
+    // 약간의 지연 후 업데이트 확인 (앱 로딩 완료 후)
+    const timeoutId = setTimeout(() => {
+      checkForUpdate().then((info) => {
+        if (info && info.updateAvailable) {
+          console.log('[AppUpdate] 업데이트 가능:', info)
+          setUpdateInfo(info)
+          setShowUpdateModal(true)
+        }
+      }).catch((err) => {
+        console.log('[AppUpdate] 확인 실패:', err)
+      })
+    }, 2000)
+
+    return () => clearTimeout(timeoutId)
+  }, [hydrated])
+
+  // Android 하드웨어 뒤로가기 버튼 처리 (네이티브 앱에서만)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
     const handleBackButton = CapApp.addListener('backButton', ({ canGoBack }) => {
       if (canGoBack) {
         window.history.back()
@@ -316,7 +352,7 @@ function AppInner() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] pb-32 sm:pb-28">
+    <div className="min-h-screen min-h-[100dvh] pb-40 sm:pb-32">
       <div className="mx-auto w-full max-w-md px-3 sm:px-4 pt-6 sm:pt-10">
         <div className="flex items-start justify-between gap-2 sm:gap-4">
           <div className="flex items-start gap-2 sm:gap-3">
@@ -331,20 +367,20 @@ function AppInner() {
             <div className="flex items-center gap-2 sm:gap-3">
               <img 
                 src="/logo.png" 
-                alt="K-Kiswahili-Words" 
+                alt="Kikorea Kiswahili Maneno" 
                 className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover"
               />
               <div className="app-title text-xl sm:text-2xl leading-tight">
-                K-Kiswahili-Words
+                Kikorea Kiswahili Maneno
               </div>
             </div>
           </div>
           <div className="flex items-center gap-0.5 sm:gap-1 rounded-2xl bg-white/0 p-0.5 sm:p-1">
             <LangButton active={state.settings.meaningLang === 'sw'} onClick={() => setMeaningLang('sw')}>
-              SW
+              {lang === 'sw' ? 'KSW' : 'SW'}
             </LangButton>
             <LangButton active={state.settings.meaningLang === 'ko'} onClick={() => setMeaningLang('ko')}>
-              KO
+              {lang === 'sw' ? 'KKO' : 'KO'}
             </LangButton>
           </div>
         </div>
@@ -363,10 +399,10 @@ function AppInner() {
                   key={`wordbook-${resetKey}`}
                   decks={state.decks}
                   items={state.items}
-                  now={state.now}
                   showEnglish={state.settings.showEnglish}
                   dispatch={dispatch}
                   lang={lang}
+                  meaningLang={state.settings.meaningLang}
                 />
               ) : null}
               {bottomTab === 'quiz' ? (
@@ -385,7 +421,10 @@ function AppInner() {
                 />
               ) : null}
               {bottomTab === 'wrong' ? (
-                <WrongNoteScreen key={`wrong-${resetKey}`} decks={state.decks} items={state.items} wrong={state.wrong} dispatch={dispatch} lang={lang} />
+                <WrongNoteScreen key={`wrong-${resetKey}`} decks={state.decks} items={state.items} wrong={state.wrong} dispatch={dispatch} lang={lang} meaningLang={state.settings.meaningLang} />
+              ) : null}
+              {bottomTab === 'dictionary' ? (
+                <DictionaryScreen key={`dict-${resetKey}`} lang={lang} decks={state.decks} dispatch={dispatch} />
               ) : null}
             </>
           ) : null}
@@ -393,10 +432,13 @@ function AppInner() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-40 bottom-nav-container">
-        <div className="mx-auto max-w-md px-3 sm:px-4 pb-3 sm:pb-5">
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 rounded-3xl p-1.5 sm:p-2 app-banner backdrop-blur">
+        <div className="mx-auto max-w-md px-3 sm:px-4 pb-6 sm:pb-5">
+          <div className="grid grid-cols-4 gap-1 sm:gap-1.5 rounded-3xl p-1.5 sm:p-2 app-banner backdrop-blur">
             <PillButton active={bottomTab === 'wordbook'} onClick={() => setBottom('wordbook')}>
               {t('wordbook', lang)}
+            </PillButton>
+            <PillButton active={bottomTab === 'dictionary'} onClick={() => setBottom('dictionary')}>
+              {t('dictionary', lang)}
             </PillButton>
             <PillButton active={bottomTab === 'quiz'} onClick={() => setBottom('quiz')}>
               {t('quiz', lang)}
@@ -407,6 +449,14 @@ function AppInner() {
           </div>
         </div>
       </div>
+
+      {/* 앱 업데이트 팝업 */}
+      <UpdateModal
+        open={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        updateInfo={updateInfo}
+        lang={lang}
+      />
     </div>
   )
 }

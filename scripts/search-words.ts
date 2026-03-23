@@ -20,18 +20,18 @@ async function check() {
       .or(`word.ilike.%${keyword}%,meaning_ko.ilike.%${keyword}%,meaning_en.ilike.%${keyword}%`)
     
     if (data && data.length > 0) {
-      console.log(`\n🔍 '${keyword}' 검색 결과: ${data.length}개`)
+      console.log(`\n?? '${keyword}' ?? ??: ${data.length}?`)
       for (const item of data) {
-        console.log(`  - [${item.mode}] 단어: ${item.word}`)
-        console.log(`    뜻(KO): ${item.meaning_ko}`)
-        console.log(`    뜻(EN): ${item.meaning_en}`)
-        console.log(`    예문: ${item.example}`)
-        console.log(`    카테고리: ${item.category}`)
+        console.log(`  - [${item.mode}] ???: ${item.word}`)
+        console.log(`    ??KO): ${item.meaning_ko}`)
+        console.log(`    ??EN): ${item.meaning_en}`)
+        console.log(`    ???: ${item.example}`)
+        console.log(`    ????: ${item.category}`)
         console.log(`    ID: ${item.id}`)
         console.log('')
       }
     } else {
-      console.log(`✅ '${keyword}': 없음`)
+      console.log(`??'${keyword}': ???`)
     }
   }
 }

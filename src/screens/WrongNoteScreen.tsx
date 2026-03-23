@@ -4,11 +4,17 @@ import type { Deck, VocabItem, WrongNoteItem } from '../lib/types'
 import { Button } from '../components/Button'
 import { Badge } from '../components/Badge'
 import { t, type Lang } from '../lib/i18n'
-import { getWrongAnswerIds, FlashcardScreen, WRONG_ANSWERS_UPDATED_EVENT } from './FlashcardScreen'
+import { getWrongAnswerIds, getWrongAnswersCount, FlashcardScreen, WRONG_ANSWERS_UPDATED_EVENT } from './FlashcardScreen'
 import { supabase } from '../lib/supabase'
+import { isOnline, getVocabByIds } from '../lib/offlineCache'
+import { applyKoOverride, applySwOverride, WORD_DISPLAY_OVERRIDE } from '../lib/displayOverrides'
 
 const WORDS_PER_DAY = 40
-const WRONG_ANSWERS_KEY = 'flashcard_wrong_answers'
+
+// 오답노트 키는 언어별로 분리
+function getWrongAnswersKey(lang: 'sw' | 'ko'): string {
+  return lang === 'ko' ? 'flashcard_wrong_answers_ko' : 'flashcard_wrong_answers_sw'
+}
 
 type CloudWord = {
   id: string
@@ -25,12 +31,14 @@ export function WrongNoteScreen({
   wrong,
   dispatch,
   lang,
+  meaningLang,
 }: {
   decks: Deck[]
   items: VocabItem[]
   wrong: WrongNoteItem[]
   dispatch: (a: Action) => void
   lang: Lang
+  meaningLang: 'sw' | 'ko'
 }) {
   const [mode, setModeState] = useState<'home' | 'list' | 'dayList'>('home')
   const [cloudWrongWords, setCloudWrongWords] = useState<CloudWord[]>([])
@@ -63,11 +71,19 @@ export function WrongNoteScreen({
     setFlashcardModeState(true)
   }
 
+  // 뒤로가기 (버튼 클릭 및 popstate 공용)
   const goBack = () => {
+    // 현재 오답노트 개수 확인
+    const currentWrongCount = getWrongAnswersCount(meaningLang) + rows.length
+    
     if (flashcardMode) {
       setFlashcardModeState(false)
     } else if (mode === 'list') {
-      if (selectedDay !== null) {
+      // 오답노트가 비어있으면 바로 home으로
+      if (currentWrongCount === 0) {
+        setSelectedDayState(null)
+        setModeState('home')
+      } else if (selectedDay !== null) {
         setSelectedDayState(null)
         setModeState('dayList')
       } else {
@@ -78,7 +94,7 @@ export function WrongNoteScreen({
     }
   }
 
-  // 뒤로가기 핸들러
+  // 뒤로가기 핸들러 (브라우저 뒤로가기 버튼)
   useEffect(() => {
     const handlePopState = () => {
       goBack()
@@ -88,10 +104,11 @@ export function WrongNoteScreen({
     return () => window.removeEventListener('popstate', handlePopState)
   }, [mode, flashcardMode, selectedDay])
 
-  // 플래시카드 오답노트에서 단어 가져오기
+  // 플래시카드 오답노트에서 단어 가져오기 (클라우드 + 사용자 단어)
   useEffect(() => {
     const fetchCloudWrongWords = async () => {
-      const wrongIds = getWrongAnswerIds()
+      // 현재 언어의 오답노트만 가져오기
+      const wrongIds = getWrongAnswerIds(meaningLang)
       setCloudWrongIdCount(wrongIds.length)
 
       if (wrongIds.length === 0) {
@@ -101,44 +118,113 @@ export function WrongNoteScreen({
         return
       }
 
-      if (!supabase) {
-        setCloudWrongWords([])
+      // 사용자 단어(items)에서 오답노트에 있는 단어 찾기
+      const itemsMap = new Map(items.map((x) => [x.id, x]))
+      const userWrongWords: CloudWord[] = []
+      const cloudIdsToFetch: string[] = []
+      
+      for (const id of wrongIds) {
+        const item = itemsMap.get(id)
+        if (item) {
+          // 사용자 단어 → CloudWord 형태로 변환
+          userWrongWords.push({
+            id: item.id,
+            word: item.sw,
+            word_audio_url: null,
+            meaning_sw: null,
+            meaning_ko: item.ko,
+            meaning_en: item.en || null,
+          })
+        } else {
+          cloudIdsToFetch.push(id)
+        }
+      }
+
+      // 클라우드 단어 가져오기
+      if (cloudIdsToFetch.length === 0) {
+        // 모든 단어가 사용자 단어인 경우
+        setCloudWrongWords(userWrongWords)
+        setCloudWrongIdCount(userWrongWords.length)
         setLoadingCloud(false)
-        setCloudFetchFailed(true)
+        setCloudFetchFailed(false)
+        // localStorage도 유효한 ID로 업데이트 (언어별)
+        const validIds = userWrongWords.map(w => w.id)
+        if (validIds.length !== wrongIds.length) {
+          try {
+            localStorage.setItem(getWrongAnswersKey(meaningLang), JSON.stringify(validIds))
+          } catch {
+            // ignore
+          }
+        }
         return
       }
-      
+
       setLoadingCloud(true)
       setCloudFetchFailed(false)
-      const { data, error } = await supabase
-        .from('generated_vocab')
-        .select('id, word, word_audio_url, meaning_sw, meaning_ko, meaning_en')
-        .in('id', wrongIds)
-      
-      if (error) {
-        console.error('오답노트 불러오기 실패:', error)
+
+      // 온라인 상태 확인
+      const currentOnline = isOnline()
+
+      if (currentOnline && supabase) {
+        // 온라인: 서버에서 가져오기
+        const { data, error } = await supabase
+          .from('generated_vocab')
+          .select('id, word, word_audio_url, meaning_sw, meaning_ko, meaning_en')
+          .in('id', cloudIdsToFetch)
+        
+        if (error) {
+          console.error('오답노트 불러오기 실패:', error)
+          setCloudWrongWords(userWrongWords)
+          setCloudWrongIdCount(userWrongWords.length)
+          setLoadingCloud(false)
+          setCloudFetchFailed(true)
+          return
+        }
+
+        const fetched = (data ?? []) as CloudWord[]
+        const allWrongWords = [...fetched, ...userWrongWords]
+        setCloudWrongWords(allWrongWords)
+        setCloudWrongIdCount(allWrongWords.length)
         setLoadingCloud(false)
-        setCloudFetchFailed(true)
-        return
-      }
 
-      const fetched = (data ?? []) as CloudWord[]
-      setCloudWrongWords(fetched)
-      setLoadingCloud(false)
-
-      if (fetched.length !== wrongIds.length) {
+        // 유효한 ID만 localStorage에 저장
         const fetchedIds = new Set(fetched.map((w) => w.id))
-        const updated = wrongIds.filter((id) => fetchedIds.has(id))
+        const validIds = wrongIds.filter((id) => fetchedIds.has(id) || itemsMap.has(id))
+        if (validIds.length !== wrongIds.length) {
+          try {
+            localStorage.setItem(getWrongAnswersKey(meaningLang), JSON.stringify(validIds))
+          } catch {
+            // ignore
+          }
+        }
+      } else {
+        // 오프라인: 캐시에서 가져오기
         try {
-          localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(updated))
-          setCloudWrongIdCount(updated.length)
+          const cached = await getVocabByIds(cloudIdsToFetch)
+          const fetched: CloudWord[] = cached.map(c => ({
+            id: c.id,
+            word: c.word,
+            word_audio_url: c.word_audio_url ?? null,
+            meaning_sw: c.meaning_sw ?? null,
+            meaning_ko: c.meaning_ko ?? null,
+            meaning_en: c.meaning_en ?? null,
+          }))
+          const allWrongWords = [...fetched, ...userWrongWords]
+          setCloudWrongWords(allWrongWords)
+          setCloudWrongIdCount(allWrongWords.length)
+          setLoadingCloud(false)
+          // 캐시에서 못 찾은 경우에만 실패 표시
+          setCloudFetchFailed(fetched.length === 0 && cloudIdsToFetch.length > 0)
         } catch {
-          // ignore
+          setCloudWrongWords(userWrongWords)
+          setCloudWrongIdCount(userWrongWords.length)
+          setLoadingCloud(false)
+          setCloudFetchFailed(true)
         }
       }
     }
     void fetchCloudWrongWords()
-  }, [mode, flashcardMode])
+  }, [mode, flashcardMode, items, meaningLang])
 
   // Day별 단어 그룹
   const totalDays = Math.ceil(cloudWrongWords.length / WORDS_PER_DAY)
@@ -170,14 +256,15 @@ export function WrongNoteScreen({
   const removeLabel = lang === 'sw' ? 'Ondoa' : '제거'
   const noWrongLabel = lang === 'sw' ? 'Hakuna makosa.' : '오답이 없어요.'
 
-  // 클라우드 오답노트 단어 제거
+  // 클라우드 오답노트 단어 제거 (언어별)
   const removeCloudWord = (wordId: string) => {
     // 로컬스토리지에서 제거
+    const key = getWrongAnswersKey(meaningLang)
     try {
-      const stored = localStorage.getItem(WRONG_ANSWERS_KEY)
+      const stored = localStorage.getItem(key)
       const current: string[] = stored ? JSON.parse(stored) : []
       const updated = current.filter((id) => id !== wordId)
-      localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(updated))
+      localStorage.setItem(key, JSON.stringify(updated))
       setCloudWrongWords((prev) => prev.filter((w) => w.id !== wordId))
       setCloudWrongIdCount(updated.length)
       notifyWrongAnswersUpdated()
@@ -186,9 +273,10 @@ export function WrongNoteScreen({
     }
   }
 
-  // 클라우드 오답노트 전체 삭제
+  // 클라우드 오답노트 전체 삭제 (언어별)
   const clearCloudWrongWords = () => {
-    localStorage.removeItem(WRONG_ANSWERS_KEY)
+    const key = getWrongAnswersKey(meaningLang)
+    localStorage.removeItem(key)
     setCloudWrongWords([])
     setCloudWrongIdCount(0)
     notifyWrongAnswersUpdated()
@@ -216,15 +304,7 @@ export function WrongNoteScreen({
             <div className="text-xs sm:text-sm font-semibold text-white/70">{totalLabel} {listCount}</div>
           </div>
           <div className="flex gap-1.5 sm:gap-2 shrink-0 flex-wrap justify-end">
-            {selectedDay !== null && (
-              <Button 
-                variant="primary" 
-                onClick={() => startFlashcard()}
-              >
-                📇 {lang === 'sw' ? 'Kadi' : '카드'}
-              </Button>
-            )}
-            <Button variant="secondary" onClick={() => goBack()}>
+            <Button variant="secondary" onClick={goBack}>
               {lang === 'sw' ? 'Rudi' : '돌아가기'}
             </Button>
             {selectedDay === null && (
@@ -282,13 +362,16 @@ export function WrongNoteScreen({
               const rawMeaning = lang === 'sw' 
                 ? (word.meaning_sw || word.meaning_en || '') 
                 : (word.meaning_ko || word.meaning_en || '')
-              const meaning = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
+              const trimmedMeaning = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
+              const meaning = (lang === 'sw'
+                ? applySwOverride(word.word, trimmedMeaning)
+                : applyKoOverride(word.word, trimmedMeaning)) ?? trimmedMeaning
               return (
                 <div key={word.id} className="rounded-3xl p-4 sm:p-5 app-card backdrop-blur">
                   <div className="flex items-start justify-between gap-2 sm:gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="text-lg sm:text-xl font-extrabold text-white truncate">{word.word}</div>
+                        <div className="text-lg sm:text-xl font-extrabold text-white truncate">{WORD_DISPLAY_OVERRIDE[word.word]?.word ?? word.word}</div>
                         {word.word_audio_url && (
                           <button
                             onClick={() => {
@@ -302,11 +385,6 @@ export function WrongNoteScreen({
                         )}
                       </div>
                       <div className="mt-0.5 sm:mt-1 text-sm sm:text-base text-white/85">{meaning}</div>
-                      <div className="mt-1.5 sm:mt-2 flex flex-wrap gap-1.5 sm:gap-2">
-                        <Badge className="border-purple-400/25 bg-purple-500/15 text-purple-300">
-                          📇 {lang === 'sw' ? 'Flashcard' : '플래시카드'}
-                        </Badge>
-                      </div>
                     </div>
                     <Button variant="ghost" onClick={() => removeCloudWord(word.id)} className="shrink-0">
                       {removeLabel}
@@ -330,10 +408,20 @@ export function WrongNoteScreen({
   // 플래시카드 모드
   if (flashcardMode && selectedDay !== null) {
     const dayWords = getWordsForDay(selectedDay)
+    // 사용자 단어를 UserWord 형태로 변환하여 전달
+    const userWordsForFlashcard = items.map(item => ({
+      id: item.id,
+      sw: item.sw,
+      ko: item.ko,
+      en: item.en,
+      example: item.example,
+      exampleKo: item.exampleKo,
+      exampleEn: item.exampleEn,
+    }))
     return (
       <FlashcardScreen
         lang={lang}
-        mode={lang === 'sw' ? 'sw' : 'ko'}
+        mode={meaningLang}
         onClose={() => {
           setFlashcardModeState(false)
           setSelectedDayState(null)
@@ -342,6 +430,7 @@ export function WrongNoteScreen({
         }}
         wrongAnswerMode={true}
         wrongWordIds={dayWords.map(w => w.id)}
+        userWords={userWordsForFlashcard}
       />
     )
   }
@@ -362,7 +451,7 @@ export function WrongNoteScreen({
                   : `총 ${cloudWrongWords.length}개 단어 (${totalDays}일)`}
               </div>
             </div>
-            <Button variant="secondary" onClick={() => goBack()} className="shrink-0">
+            <Button variant="secondary" onClick={goBack} className="shrink-0">
               {lang === 'sw' ? 'Rudi' : '돌아가기'}
             </Button>
           </div>

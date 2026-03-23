@@ -174,9 +174,11 @@ body {
   }
 }
 
-/* 하단 네비게이션 safe area */
+/* 하단 네비게이션 safe area - 구형 핸드폰에서도 잘 보이도록 */
 .bottom-nav-container {
-  padding-bottom: calc(1.25rem + var(--safe-bottom));
+  padding-bottom: calc(2rem + var(--safe-bottom));
+  /* 구형 안드로이드 소프트 키 영역 고려 */
+  padding-bottom: calc(2rem + max(var(--safe-bottom), 16px));
 }
 
 /* 스크롤 스냅 (선택적) */
@@ -207,6 +209,60 @@ button:active {
   }
   
   .bottom-nav-container {
-    padding-bottom: calc(0.5rem + var(--safe-bottom));
+    padding-bottom: calc(1rem + var(--safe-bottom));
+  }
+}
+
+/* ===== 구형 핸드폰 지원 (작은 화면) ===== */
+@media screen and (max-width: 360px) {
+  html {
+    font-size: 14px;
+  }
+  
+  .app-title {
+    font-size: 1rem !important;
+  }
+  
+  /* 버튼 크기 확대 (터치 영역) */
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+  
+  /* 하단 네비게이션 추가 패딩 */
+  .bottom-nav-container {
+    padding-bottom: calc(2.5rem + max(var(--safe-bottom), 20px));
+  }
+}
+
+/* 아주 작은 화면 (구형 핸드폰) */
+@media screen and (max-width: 320px) {
+  html {
+    font-size: 13px;
+  }
+  
+  .app-title {
+    font-size: 0.875rem !important;
+  }
+  
+  /* 더 큰 하단 패딩 */
+  .bottom-nav-container {
+    padding-bottom: calc(3rem + max(var(--safe-bottom), 24px));
+  }
+}
+
+/* 구형 안드로이드 (소프트키 버튼 있는 기기) */
+@media screen and (max-height: 640px) {
+  .bottom-nav-container {
+    padding-bottom: calc(2.5rem + max(var(--safe-bottom), 20px));
+  }
+}
+
+/* 높은 DPI 구형 기기 지원 */
+@media screen and (-webkit-min-device-pixel-ratio: 1.5) and (max-width: 400px) {
+  /* 선명한 텍스트 */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }

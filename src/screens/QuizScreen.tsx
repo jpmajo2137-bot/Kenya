@@ -6,8 +6,10 @@ import { cn } from '../components/cn'
 import { t, type Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import { getWrongAnswerIds, addToWrongAnswers, removeFromWrongAnswers, WRONG_ANSWERS_UPDATED_EVENT } from './FlashcardScreen'
-import { getVocabByIds, type CachedVocab } from '../lib/offlineCache'
+import { getVocabByIds, getVocabFromCache, isOnline, onOnlineStatusChange, type CachedVocab } from '../lib/offlineCache'
 import { canAccessQuiz, showRewardedAd, getQuizAccessRemainingTime } from '../lib/admob'
+import { applyKoOverride, applyEnOverride, applySwOverride, WORD_DISPLAY_OVERRIDE } from '../lib/displayOverrides'
+import { GLOBAL_WORD_EXCLUSIONS } from '../lib/filterUtils'
 
 type QuizSource = 'all' | 'wrong' | { deckId: string } | { cloud: string }
 
@@ -15,18 +17,23 @@ type CloudWord = {
   id: string
   word: string
   word_audio_url: string | null
+  meaning_ko_audio_url: string | null
   meaning_sw: string | null
   meaning_ko: string | null
   meaning_en: string | null
 }
 
-const WRONG_ANSWERS_KEY = 'flashcard_wrong_answers'
+// 오답노트 키는 언어별로 분리 (FlashcardScreen에서 관리)
+function getWrongAnswersKey(lang: 'sw' | 'ko'): string {
+  return lang === 'ko' ? 'flashcard_wrong_answers_ko' : 'flashcard_wrong_answers_sw'
+}
 
 function mapCachedToCloud(row: CachedVocab): CloudWord {
   return {
     id: row.id,
     word: row.word,
     word_audio_url: row.word_audio_url ?? null,
+    meaning_ko_audio_url: row.meaning_ko_audio_url ?? null,
     meaning_sw: row.meaning_sw ?? null,
     meaning_ko: row.meaning_ko ?? null,
     meaning_en: row.meaning_en ?? null,
@@ -87,11 +94,27 @@ function meaningOf(item: VocabItem, lang: 'sw' | 'ko') {
 //   return word.meaning_ko || word.meaning_en || ''
 // }
 
-function pickOptions(pool: VocabItem[], correct: VocabItem, lang: 'sw' | 'ko') {
+function pickOptions(pool: VocabItem[], correct: VocabItem, lang: 'sw' | 'ko', cloudPool?: CloudWord[]) {
   const correctText = meaningOf(correct, lang)
-  const candidates = pool
-    .map((x) => meaningOf(x, lang))
-    .filter((t) => t && t !== correctText)
+  
+  // 클라우드 단어 풀이 있으면 클라우드에서 보기 생성, 없으면 기존 pool에서 생성
+  let candidates: string[]
+  if (cloudPool && cloudPool.length > 0) {
+    candidates = cloudPool
+      .map((x) => {
+        if (lang === 'sw') {
+          const raw = cleanMeaning(x.meaning_en || x.meaning_ko)
+          return applyEnOverride(raw, x.word) ?? raw
+        }
+        const raw = cleanMeaning(x.meaning_ko || x.meaning_en)
+        return applyKoOverride(x.word, raw) ?? raw
+      })
+      .filter((t) => t && t !== correctText)
+  } else {
+    candidates = pool
+      .map((x) => meaningOf(x, lang))
+      .filter((t) => t && t !== correctText)
+  }
 
   const uniq = Array.from(new Set(candidates))
   const opts: string[] = [correctText]
@@ -112,16 +135,47 @@ function pickOptions(pool: VocabItem[], correct: VocabItem, lang: 'sw' | 'ko') {
   return { correctText, options: opts }
 }
 
+// 한글이 포함되어 있는지 확인
+function containsKorean(str: string | null | undefined) {
+  if (!str) return false;
+  return /[가-힣]/.test(str);
+}
+
+// 스와힐리어 단어 추출: word가 스와힐리어(한글 없음)면 word, 아니면 meaning_sw
+function getSwahiliWord(item: CloudWord) {
+  if (item.word && !containsKorean(item.word)) {
+    const override = WORD_DISPLAY_OVERRIDE[item.word];
+    return cleanMeaning(override?.word ?? item.word);
+  }
+  const rawSw = cleanMeaning(item.meaning_sw);
+  if (rawSw) return applySwOverride(item.word, rawSw) ?? rawSw;
+  return cleanMeaning(item.meaning_en) || '';
+}
+
+// 한국어 뜻 추출: word가 한국어면 word, 아니면 meaning_ko (단어장과 동일하게)
+function getKoreanWord(item: CloudWord) {
+  if (item.word && containsKorean(item.word)) {
+    const override = WORD_DISPLAY_OVERRIDE[item.word];
+    const w = override?.word ?? item.word;
+    const raw = w.includes(',') ? w.split(',')[0].trim() : w;
+    return applyKoOverride(item.word, raw) ?? raw;
+  }
+  const rawMeaning = item.meaning_ko || item.meaning_en || '';
+  const trimmed = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning;
+  return applyKoOverride(item.word, trimmed) ?? trimmed;
+}
+
 // isSwToKo: true = 스와힐리어 문제 → 한국어 보기, false = 한국어 문제 → 스와힐리어 보기
 function pickCloudOptionsWithDirection(pool: CloudWord[], correct: CloudWord, isSwToKo: boolean) {
   // isSwToKo = true: 문제는 스와힐리어, 보기는 한국어
   // isSwToKo = false: 문제는 한국어, 보기는 스와힐리어
   const correctText = isSwToKo 
-    ? cleanMeaning(correct.meaning_ko || correct.meaning_en)
-    : correct.word
+    ? getKoreanWord(correct)   // 스와힐리어 문제 → 한국어가 정답
+    : getSwahiliWord(correct)  // 한국어 문제 → 스와힐리어가 정답
+  
   
   const candidates = pool
-    .map((x) => isSwToKo ? cleanMeaning(x.meaning_ko || x.meaning_en) : x.word)
+    .map((x) => isSwToKo ? getKoreanWord(x) : getSwahiliWord(x))
     .filter((t) => t && t !== correctText)
 
   const uniq = Array.from(new Set(candidates))
@@ -243,7 +297,9 @@ export function QuizScreen({
   const [cloudLoading, setCloudLoading] = useState(false)
   const [cloudPool, setCloudPool] = useState<CloudWord[]>([])
   const [allCloudWords, setAllCloudWords] = useState<CloudWord[]>([]) // 전체 단어 (보기용)
+  const [allCloudWordsLoading, setAllCloudWordsLoading] = useState(true) // 전체 단어 로딩 상태
   const [wrongAnswerVersion, setWrongAnswerVersion] = useState(0)
+  const [online, setOnline] = useState(isOnline())
 
   // 오답노트 변경 이벤트 수신
   useEffect(() => {
@@ -254,24 +310,68 @@ export function QuizScreen({
     return () => window.removeEventListener(WRONG_ANSWERS_UPDATED_EVENT, handleWrongAnswersUpdated)
   }, [])
 
+  // 온라인 상태 감지
+  useEffect(() => {
+    const unsubscribe = onOnlineStatusChange(setOnline)
+    return unsubscribe
+  }, [])
+
   const wrongIds = useMemo(() => new Set(wrong.map((w) => w.id)), [wrong])
 
-  // 전체 클라우드 단어 가져오기 (보기용)
+  // 전체 클라우드 단어 가져오기 (보기용) - 모든 단어에서 보기 생성
   useEffect(() => {
     const fetchAllCloudWords = async () => {
-      if (!supabase) return
+      setAllCloudWordsLoading(true)
       const mode = lang === 'sw' ? 'sw' : 'ko'
       
-      const { data } = await supabase
-        .from('generated_vocab')
-        .select('id, word, word_audio_url, meaning_sw, meaning_ko, meaning_en')
-        .eq('mode', mode)
-        .limit(1000)
-      
-      setAllCloudWords((data ?? []) as CloudWord[])
+      if (online && supabase) {
+        // 온라인: 서버에서 가져오기
+        const allData: CloudWord[] = []
+        const pageSize = 1000
+        let page = 0
+        let hasMore = true
+        
+        while (hasMore) {
+          const from = page * pageSize
+          const to = from + pageSize - 1
+          const { data } = await supabase
+            .from('generated_vocab')
+            .select('id, word, word_audio_url, meaning_ko_audio_url, meaning_sw, meaning_ko, meaning_en')
+            .eq('mode', mode)
+            .range(from, to)
+          
+          if (data && data.length > 0) {
+            allData.push(...(data as CloudWord[]))
+            page++
+            hasMore = data.length === pageSize
+          } else {
+            hasMore = false
+          }
+        }
+        
+        setAllCloudWords(allData)
+      } else {
+        // 오프라인: 캐시에서 가져오기
+        try {
+          const cached = await getVocabFromCache(mode)
+          const mapped: CloudWord[] = cached.map(c => ({
+            id: c.id,
+            word: c.word,
+            word_audio_url: c.word_audio_url ?? null,
+            meaning_ko_audio_url: c.meaning_ko_audio_url ?? null,
+            meaning_sw: c.meaning_sw ?? null,
+            meaning_ko: c.meaning_ko ?? null,
+            meaning_en: c.meaning_en ?? null,
+          }))
+          setAllCloudWords(mapped)
+        } catch {
+          setAllCloudWords([])
+        }
+      }
+      setAllCloudWordsLoading(false)
     }
     void fetchAllCloudWords()
-  }, [lang])
+  }, [lang, online])
 
   // 선택한 단어장의 클라우드 단어 가져오기 (문제용)
   useEffect(() => {
@@ -279,35 +379,77 @@ export function QuizScreen({
     const fetchCloudWords = async () => {
       // 클라우드 소스인지 확인
       if (typeof source === 'object' && 'cloud' in source) {
-        if (!supabase) {
-          setCloudWords([])
-          setCloudPool([])
-          setCloudLoading(false)
-          return
-        }
-
         setCloudLoading(true)
         const mode = lang === 'sw' ? 'sw' : 'ko'
+        const category = source.cloud !== '모든 단어' ? source.cloud : undefined
         
-        let query = supabase
-          .from('generated_vocab')
-          .select('id, word, word_audio_url, meaning_sw, meaning_ko, meaning_en')
-          .eq('mode', mode)
-        
-        if (source.cloud !== '모든 단어') {
-          query = query.eq('category', source.cloud)
+        if (online && supabase) {
+          // 온라인: 서버에서 가져오기
+          const allData: CloudWord[] = []
+          const pageSize = 1000
+          let page = 0
+          let hasMore = true
+          
+          while (hasMore) {
+            if (cancelled) return
+            const from = page * pageSize
+            const to = from + pageSize - 1
+            
+            let query = supabase
+              .from('generated_vocab')
+              .select('id, word, word_audio_url, meaning_ko_audio_url, meaning_sw, meaning_ko, meaning_en')
+              .eq('mode', mode)
+            
+            if (category) {
+              query = query.eq('category', category)
+            }
+            
+            const { data } = await query.range(from, to)
+            
+            if (data && data.length > 0) {
+              allData.push(...(data as CloudWord[]))
+              page++
+              hasMore = data.length === pageSize
+            } else {
+              hasMore = false
+            }
+          }
+          
+          if (cancelled) return
+          const filtered = allData.filter((w) => !GLOBAL_WORD_EXCLUSIONS.includes(w.word ?? ''))
+          setCloudWords(filtered)
+          setCloudPool(filtered)
+        } else {
+          // 오프라인: 캐시에서 가져오기
+          try {
+            const cached = await getVocabFromCache(mode, category)
+            const mapped: CloudWord[] = cached
+              .map(c => ({
+                id: c.id,
+                word: c.word,
+                word_audio_url: c.word_audio_url ?? null,
+                meaning_ko_audio_url: c.meaning_ko_audio_url ?? null,
+                meaning_sw: c.meaning_sw ?? null,
+                meaning_ko: c.meaning_ko ?? null,
+                meaning_en: c.meaning_en ?? null,
+              }))
+              .filter((w) => !GLOBAL_WORD_EXCLUSIONS.includes(w.word ?? ''))
+            if (cancelled) return
+            setCloudWords(mapped)
+            setCloudPool(mapped)
+          } catch {
+            if (cancelled) return
+            setCloudWords([])
+            setCloudPool([])
+          }
         }
-        
-        const { data } = await query.limit(500)
-        if (cancelled) return
-        setCloudWords((data ?? []) as CloudWord[])
-        setCloudPool((data ?? []) as CloudWord[])
         setCloudLoading(false)
         return
       }
 
       if (source === 'wrong') {
-        const wrongAnswerIds = getWrongAnswerIds()
+        // 현재 언어의 오답노트만 가져오기
+        const wrongAnswerIds = getWrongAnswerIds(meaningLang)
         if (wrongAnswerIds.length === 0) {
           setCloudWords([])
           setCloudPool([])
@@ -316,26 +458,63 @@ export function QuizScreen({
         }
 
         setCloudLoading(true)
+        
+        // 사용자 단어(items)에서 오답노트에 있는 단어 찾기
+        const itemsMap = new Map(items.map((x) => [x.id, x]))
+        const userWrongWords: CloudWord[] = []
+        const cloudIdsToFetch: string[] = []
+        
+        for (const id of wrongAnswerIds) {
+          const item = itemsMap.get(id)
+          if (item) {
+            // 사용자 단어 → CloudWord 형태로 변환
+            userWrongWords.push({
+              id: item.id,
+              word: item.sw,
+              word_audio_url: null,
+              meaning_ko_audio_url: null,
+              meaning_sw: null,
+              meaning_ko: item.ko,
+              meaning_en: item.en || null,
+            })
+          } else {
+            cloudIdsToFetch.push(id)
+          }
+        }
+        
         let fetched: CloudWord[] = []
         let hasFetchError = false
 
-        if (supabase) {
-          const { data, error } = await supabase
-            .from('generated_vocab')
-            .select('id, word, word_audio_url, meaning_sw, meaning_ko, meaning_en')
-            .in('id', wrongAnswerIds)
-          if (error) {
-            console.error('오답노트 퀴즈 불러오기 실패:', error)
-            hasFetchError = true
+        if (cloudIdsToFetch.length > 0) {
+          if (online && supabase) {
+            // 온라인: 서버에서 가져오기
+            const chunkSize = 500
+            for (let i = 0; i < cloudIdsToFetch.length; i += chunkSize) {
+              const chunk = cloudIdsToFetch.slice(i, i + chunkSize)
+              const { data, error } = await supabase
+                .from('generated_vocab')
+                .select('id, word, word_audio_url, meaning_ko_audio_url, meaning_sw, meaning_ko, meaning_en')
+                .in('id', chunk)
+              if (error) {
+                console.error('오답노트 퀴즈 불러오기 실패:', error)
+                hasFetchError = true
+              } else {
+                fetched.push(...((data ?? []) as CloudWord[]))
+              }
+            }
           } else {
-            fetched = (data ?? []) as CloudWord[]
+            // 오프라인: 캐시에서 가져오기
+            try {
+              const cachedRows = await getVocabByIds(cloudIdsToFetch)
+              fetched = cachedRows.map(mapCachedToCloud)
+            } catch {
+              hasFetchError = true
+            }
           }
-        } else {
-          hasFetchError = true
         }
 
         const fetchedIds = new Set(fetched.map((w) => w.id))
-        const missingIds = wrongAnswerIds.filter((id) => !fetchedIds.has(id))
+        const missingIds = cloudIdsToFetch.filter((id) => !fetchedIds.has(id))
         let cached: CloudWord[] = []
 
         if (missingIds.length > 0) {
@@ -347,18 +526,21 @@ export function QuizScreen({
           }
         }
 
-        const merged = [...fetched, ...cached]
+        // 클라우드 단어 + 캐시 단어 + 사용자 단어 합치기
+        const merged = [...fetched, ...cached, ...userWrongWords]
 
         if (cancelled) return
         setCloudWords(merged)
         setCloudPool(merged)
         setCloudLoading(false)
 
-        if (merged.length !== wrongAnswerIds.length || hasFetchError) {
-          const mergedIds = new Set(merged.map((w) => w.id))
+        // 유효한 ID만 localStorage에 저장 (언어별)
+        const mergedIds = new Set(merged.map((w) => w.id))
+        const validIds = wrongAnswerIds.filter((id) => mergedIds.has(id) || itemsMap.has(id))
+        if (validIds.length !== wrongAnswerIds.length || hasFetchError) {
           const updated = wrongAnswerIds.filter((id) => mergedIds.has(id))
           try {
-            localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(updated))
+            localStorage.setItem(getWrongAnswersKey(meaningLang), JSON.stringify(updated))
             if (updated.length !== wrongAnswerIds.length) {
               window.dispatchEvent(new Event(WRONG_ANSWERS_UPDATED_EVENT))
             }
@@ -377,20 +559,24 @@ export function QuizScreen({
     return () => {
       cancelled = true
     }
-  }, [source, lang, wrongAnswerVersion])
+  }, [source, lang, wrongAnswerVersion, online])
 
+  // 사용자 단어장(deckId) 퀴즈에서는 dueOnly 무시 (퀴즈 중 SRS 업데이트로 단어가 사라지는 문제 방지)
+  const isUserDeckSource = typeof source === 'object' && 'deckId' in source
+  
   const pool = useMemo(() => {
     let base = items
-    if (dueOnly) {
+    // 사용자 단어장 퀴즈에서는 dueOnly 필터 무시
+    if (dueOnly && !isUserDeckSource) {
       base = base.filter((x) => x.srs.dueAt <= now)
     }
     if (source === 'all') return base
     if (source === 'wrong') return base.filter((x) => wrongIds.has(x.id))
-    if (typeof source === 'object' && 'deckId' in source) {
+    if (isUserDeckSource) {
       return base.filter((x) => x.deckId === source.deckId)
     }
     return []
-  }, [dueOnly, items, source, wrongIds, now])
+  }, [dueOnly, items, source, wrongIds, now, isUserDeckSource])
 
   const isCloudSource = typeof source === 'object' && 'cloud' in source
   const isWrongSource = source === 'wrong'
@@ -472,7 +658,8 @@ export function QuizScreen({
       setRemovedFromWrong(false)
       setPhase('play')
       if (q[0]) {
-        const built = pickOptions(pool, q[0], meaningLang)
+        // 보기는 전체 클라우드 단어에서 가져옴
+        const built = pickOptions(pool, q[0], meaningLang, allCloudWords)
         setCorrectText(built.correctText)
         setOptions(built.options)
       } else {
@@ -531,11 +718,15 @@ export function QuizScreen({
     
     if (current) {
       dispatch({ type: 'quizAnswer', id: current.id, correct: ok })
+      // 사용자 단어 오답 시 오답노트에 추가 (언어별)
+      if (!ok) {
+        addToWrongAnswers(current.id, meaningLang)
+      }
     }
     
-    // 클라우드 단어 오답 시 오답노트에 추가
+    // 클라우드 단어 오답 시 오답노트에 추가 (언어별)
     if (currentCloud && !ok) {
-      addToWrongAnswers(currentCloud.id)
+      addToWrongAnswers(currentCloud.id, meaningLang)
     }
   }
 
@@ -558,14 +749,74 @@ export function QuizScreen({
       setCorrectText(built.correctText)
       setOptions(built.options)
     } else {
-      const built = pickOptions(pool, order[nextIdx], meaningLang)
+      // 보기는 전체 클라우드 단어에서 가져옴
+      const built = pickOptions(pool, order[nextIdx], meaningLang, allCloudWords)
       setCorrectText(built.correctText)
       setOptions(built.options)
     }
   }
 
-  const canStart = (isCloudSource || isWrongSource) ? cloudPool.length > 0 : pool.length > 0
+  // 모든 퀴즈에서 allCloudWords가 로드되어야 보기를 제대로 생성할 수 있음
+  const canStart = (isCloudSource || isWrongSource) 
+    ? cloudPool.length > 0 && (allCloudWords.length > 0 || !allCloudWordsLoading)
+    : pool.length > 0 && (allCloudWords.length > 0 || !allCloudWordsLoading)
   const totalWords = (isCloudSource || isWrongSource) ? cloudPool.length : pool.length
+  const isLoadingOptions = allCloudWordsLoading
+
+  // 오프라인인데 캐시된 단어가 없는 경우 - 사용 불가 안내
+  const isOfflineWithNoData = !online && !allCloudWordsLoading && allCloudWords.length === 0
+
+  if (isOfflineWithNoData) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        {/* 아이콘 영역 */}
+        <div className="relative mb-8">
+          <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-orange-500/20 to-red-500/20 border-2 border-orange-400/30 flex items-center justify-center">
+            <div className="text-5xl sm:text-6xl">🧠</div>
+          </div>
+          <div className="absolute -bottom-2 -right-2 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-red-500/30 to-orange-500/30 border-2 border-red-400/40 flex items-center justify-center">
+            <span className="text-xl sm:text-2xl">📴</span>
+          </div>
+        </div>
+
+        {/* 메인 메시지 */}
+        <div className="text-center space-y-4 max-w-sm">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-white">
+            {lang === 'sw' ? 'Jaribio Halipatikani' : '퀴즈를 사용할 수 없습니다'}
+          </h2>
+          
+          <p className="text-sm sm:text-base text-white/80 leading-relaxed">
+            {lang === 'sw' 
+              ? 'Unahitaji kupakua data kwanza ili uweze kufanya majaribio bila mtandao.'
+              : '오프라인에서 퀴즈를 풀려면 먼저 데이터를 다운로드해야 합니다.'}
+          </p>
+        </div>
+
+        {/* 안내 카드 */}
+        <div className="mt-8 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-400/20 max-w-sm w-full">
+          <div className="flex items-start gap-3">
+            <div className="text-xl sm:text-2xl">💡</div>
+            <div>
+              <div className="text-sm font-bold text-cyan-300 mb-1">
+                {lang === 'sw' ? 'Jinsi ya kutatua' : '해결 방법'}
+              </div>
+              <div className="text-xs text-white/60 leading-relaxed">
+                {lang === 'sw'
+                  ? '1. Unganisha na mtandao\n2. Nenda kwenye ukurasa wa nyumbani\n3. Bonyeza "📥 Pakua Yote"\n4. Baada ya pakua kukamilika, unaweza kufanya majaribio bila mtandao!'
+                  : '1. 인터넷에 연결해주세요\n2. 홈 화면으로 이동\n3. "📥 전체 다운로드" 버튼을 눌러주세요\n4. 다운로드 완료 후 오프라인에서도 퀴즈를 풀 수 있습니다!'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 연결 대기 */}
+        <div className="mt-6 flex items-center gap-2 text-sm text-white/50">
+          <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
+          <span>{lang === 'sw' ? 'Inasubiri muunganisho...' : '연결 대기 중...'}</span>
+        </div>
+      </div>
+    )
+  }
 
   if (phase === 'setup') {
     const wordsLabel = lang === 'sw' ? 'maneno' : '단어'
@@ -662,9 +913,14 @@ export function QuizScreen({
                   </span>
                 </Button>
               )}
-              {!canStart && !cloudLoading ? (
+              {!canStart && !cloudLoading && !isLoadingOptions ? (
                 <div className="rounded-2xl border border-[rgb(var(--orange))]/40 bg-[rgb(var(--orange))]/10 p-2.5 sm:p-3 text-xs sm:text-sm text-white">
                   {noWordsMsg}
+                </div>
+              ) : null}
+              {isLoadingOptions ? (
+                <div className="rounded-2xl border border-white/20 bg-white/5 p-2.5 sm:p-3 text-xs sm:text-sm text-white/70 text-center">
+                  {lang === 'sw' ? 'Inapakia maneno...' : '보기 단어 로딩 중...'}
                 </div>
               ) : null}
               
@@ -778,47 +1034,64 @@ export function QuizScreen({
   const wrongLabel = lang === 'sw' ? `Kosa · Jibu: ${correctText}` : `오답 · 정답: ${correctText}`
 
   // 문제 표시 (방향에 따라 다른 언어)
-  // currentDirection = true: 스와힐리어 단어가 문제
-  // currentDirection = false: 한국어 뜻이 문제
+  // currentDirection = true: 스와힐리어가 문제
+  // currentDirection = false: 한국어가 문제
   const displayWord = currentCloud 
-    ? (currentDirection ? currentCloud.word : cleanMeaning(currentCloud.meaning_ko || currentCloud.meaning_en))
+    ? (currentDirection ? getSwahiliWord(currentCloud) : getKoreanWord(currentCloud))
     : current?.sw
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <div className="flex items-center justify-between rounded-3xl p-4 sm:p-5 app-banner backdrop-blur">
+    <div className="space-y-2 sm:space-y-3">
+      <div className="flex items-center justify-between rounded-2xl p-3 sm:p-4 app-banner backdrop-blur">
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setPhase('setup')}
-            className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl border border-white/15 bg-white/8 text-white/70 hover:bg-white/15 active:scale-95 transition touch-target"
+            className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-white/15 bg-white/8 text-white/70 hover:bg-white/15 active:scale-95 transition touch-target"
           >
             ←
           </button>
           <div className="min-w-0">
-            <div className="text-xs sm:text-sm font-semibold text-white/70 truncate">{deckName}</div>
-            <div className="text-base sm:text-lg font-extrabold text-white">{t('quiz', lang)} · {progress}</div>
+            <div className="text-[10px] sm:text-xs font-semibold text-white/70 truncate">{deckName}</div>
+            <div className="text-sm sm:text-base font-extrabold text-white">{t('quiz', lang)} · {progress}</div>
           </div>
         </div>
         <div className="text-xs sm:text-sm font-extrabold text-white/90 shrink-0">{t('score', lang)} {score}</div>
       </div>
 
-      <div className="rounded-3xl p-4 sm:p-6 app-card backdrop-blur">
+      <div className="rounded-3xl p-3 sm:p-5 app-card backdrop-blur">
         <div className="text-center">
-          <div className="text-3xl sm:text-4xl font-extrabold text-white break-words">{displayWord}</div>
-          {/* 스와힐리어 단어가 문제일 때만 오디오 버튼 표시 */}
-          {currentDirection && currentCloud?.word_audio_url && (
+          <div className="text-2xl sm:text-3xl font-extrabold text-white break-words">{displayWord}</div>
+          {/* TTS 버튼 표시 조건:
+              - 한국어 사용자(ko): 스와힐리어 문제일 때만 (currentDirection=true, word가 스와힐리어) → word_audio_url
+              - 스와힐리어 사용자(sw): 한국어 문제일 때만 (currentDirection=false) → word가 한국어면 word_audio_url, 아니면 meaning_ko_audio_url
+          */}
+          {meaningLang === 'ko' && currentDirection && currentCloud?.word_audio_url && !containsKorean(currentCloud.word) && (
             <button
               onClick={() => {
                 const a = new Audio(currentCloud.word_audio_url!)
                 void a.play()
               }}
-              className="mt-2 sm:mt-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg hover:bg-white/20 active:scale-95 transition touch-target"
+              className="mt-1.5 sm:mt-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base hover:bg-white/20 active:scale-95 transition touch-target"
             >
               🔊
             </button>
           )}
+          {meaningLang === 'sw' && !currentDirection && (
+            // word가 한국어면 word_audio_url 사용, 아니면 meaning_ko_audio_url 사용
+            (containsKorean(currentCloud?.word || '') ? currentCloud?.word_audio_url : currentCloud?.meaning_ko_audio_url) && (
+            <button
+              onClick={() => {
+                const audioUrl = containsKorean(currentCloud?.word || '') ? currentCloud?.word_audio_url : currentCloud?.meaning_ko_audio_url
+                const a = new Audio(audioUrl!)
+                void a.play()
+              }}
+              className="mt-1.5 sm:mt-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base hover:bg-white/20 active:scale-95 transition touch-target"
+            >
+              🔊
+            </button>
+          ))}
         </div>
-        <div className="mt-4 sm:mt-6 grid gap-1.5 sm:gap-2">
+        <div className="mt-3 sm:mt-4 grid gap-1 sm:gap-1.5">
           {options.map((opt, i) => {
             const disabled = !opt || opt === '—'
             const state =
@@ -831,7 +1104,7 @@ export function QuizScreen({
               <button
                 key={`${i}_${opt}`}
                 className={cn(
-                  'rounded-2xl sm:rounded-3xl border px-4 sm:px-5 py-3 sm:py-4 text-left text-sm sm:text-base font-extrabold text-white transition active:scale-[0.99] touch-target',
+                  'rounded-xl sm:rounded-2xl border px-3 sm:px-4 py-2.5 sm:py-3 text-left text-sm sm:text-base font-extrabold text-white transition active:scale-[0.99] touch-target',
                   disabled ? 'opacity-40' : state,
                 )}
                 onClick={() => (disabled ? null : answer(opt))}
@@ -844,7 +1117,7 @@ export function QuizScreen({
         </div>
 
         {selected ? (
-          <div className="mt-4 sm:mt-5 space-y-2">
+          <div className="mt-3 sm:mt-4 space-y-1.5">
             <div className="flex items-center justify-between gap-2 sm:gap-3">
               <div
                 className={cn(
@@ -856,16 +1129,16 @@ export function QuizScreen({
               </div>
               <Button onClick={next} className="shrink-0">{t('next', lang)}</Button>
             </div>
-            {/* 오답노트 퀴즈에서 정답 시 오답노트 제거 버튼 */}
+            {/* 오답노트 퀴즈에서 정답 시 오답노트 제거 버튼 (언어별) */}
             {isWrongSource && ok && currentCloud && (
               <button
                 onClick={() => {
-                  removeFromWrongAnswers(currentCloud.id)
+                  removeFromWrongAnswers(currentCloud.id, meaningLang)
                   setRemovedFromWrong(true)
                 }}
                 disabled={removedFromWrong}
                 className={cn(
-                  "w-full py-2 px-4 rounded-xl text-xs sm:text-sm font-semibold transition",
+                  "w-full py-1.5 px-3 rounded-xl text-xs font-semibold transition",
                   removedFromWrong
                     ? "bg-white/10 border border-white/20 text-white/50"
                     : "bg-[rgb(var(--green))]/20 border border-[rgb(var(--green))]/30 text-[rgb(var(--green))] hover:bg-[rgb(var(--green))]/30 active:scale-[0.98]"
@@ -879,7 +1152,7 @@ export function QuizScreen({
             )}
           </div>
         ) : (
-          <div className="mt-4 sm:mt-5 text-center text-[10px] sm:text-xs font-semibold text-white/60">{t('selectAnswer', lang)}</div>
+          <div className="mt-3 sm:mt-4 text-center text-[10px] sm:text-xs font-semibold text-white/60">{t('selectAnswer', lang)}</div>
         )}
       </div>
     </div>

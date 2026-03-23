@@ -65,11 +65,9 @@
 # 5. AndroidX/Support Libraries
 # =========================================
 
--keep class androidx.** { *; }
--keep interface androidx.** { *; }
+# AndroidX 라이브러리 자체 consumer ProGuard 규칙 + R8 reachability에 의존
+# 과도한 -keep은 R8 최적화를 방해하여 deprecated API가 APK에 잔존
 -dontwarn androidx.**
-
--keep class android.support.** { *; }
 -dontwarn android.support.**
 
 # =========================================
