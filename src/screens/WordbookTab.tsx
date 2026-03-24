@@ -256,7 +256,7 @@ export function WordbookTab({
 
       // 2) Supabase 카운트는 병렬로 백그라운드 로딩
       try {
-        const promises: Promise<void>[] = []
+        const promises: PromiseLike<void>[] = []
 
         // 전체 단어 수
         promises.push(

@@ -13,7 +13,6 @@ import {
 } from '../lib/translate'
 import { showRewardedAd } from '../lib/admob'
 import { azureSynthesizeSpeech, hasAzureTts } from '../lib/azureTts'
-import { supabase } from '../lib/supabase'
 import type { Action } from '../app/state'
 import type { Deck, VocabItem } from '../lib/types'
 
@@ -121,40 +120,73 @@ async function searchDB(word: string, fromLang: 'sw' | 'ko' | 'en'): Promise<Tra
   if (!supabase) return null
   const trimmed = word.trim().toLowerCase()
 
-  const col = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'word'
-  const modes = fromLang === 'sw' ? ['ko'] : fromLang === 'ko' ? ['sw'] : ['ko', 'sw']
+  const allModes: ('ko' | 'sw')[] = ['sw', 'ko']
 
-  for (const mode of modes) {
-    const modeCol = mode === 'ko' ? 'word' : 'word'
-    const searchCol = fromLang === 'sw'
-      ? 'word'
-      : fromLang === 'ko'
-        ? 'meaning_ko'
-        : 'meaning_en'
-
+  // 1) word 컬럼에서 정확 매치
+  for (const mode of allModes) {
     const { data } = await supabase
       .from('generated_vocab')
       .select('*')
       .eq('mode', mode)
-      .ilike(searchCol, trimmed)
+      .ilike('word', trimmed)
       .limit(1)
+    if (data?.length) return dbRowToResult(data[0], fromLang)
+  }
 
-    if (data?.length) {
-      const r = data[0]
-      return dbRowToResult(r, fromLang)
-    }
-
-    const { data: partial } = await supabase
+  // 2) meaning 컬럼에서 정확 매치
+  for (const mode of allModes) {
+    const meaningCol = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'meaning_ko'
+    const { data } = await supabase
       .from('generated_vocab')
       .select('*')
       .eq('mode', mode)
-      .ilike(searchCol, `%${trimmed}%`)
+      .ilike(meaningCol, trimmed)
       .limit(1)
+    if (data?.length) return dbRowToResult(data[0], fromLang)
+  }
 
-    if (partial?.length) {
-      const r = partial[0]
-      return dbRowToResult(r, fromLang)
+  // 3) meaning 컬럼에서 쉼표 구분 항목 매치 (예: "애정, 사랑"에서 "사랑" 매치)
+  for (const mode of allModes) {
+    const meaningCol = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'meaning_ko'
+    const { data } = await supabase
+      .from('generated_vocab')
+      .select('*')
+      .eq('mode', mode)
+      .ilike(meaningCol, `%${trimmed}%`)
+      .limit(10)
+    if (data?.length) {
+      const itemMatch = data.find(r => {
+        const meaning = (r[meaningCol] ?? '') as string
+        return meaning.split(/[,،/]/).some(s => s.trim().toLowerCase() === trimmed)
+      })
+      if (itemMatch) return dbRowToResult(itemMatch, fromLang)
     }
+  }
+
+  // 4) word 컬럼에서 부분 매치
+  for (const mode of allModes) {
+    const { data } = await supabase
+      .from('generated_vocab')
+      .select('*')
+      .eq('mode', mode)
+      .ilike('word', `%${trimmed}%`)
+      .limit(5)
+    if (data?.length) {
+      const exact = data.find(r => (r.word ?? '').toLowerCase() === trimmed)
+      return dbRowToResult(exact ?? data[0], fromLang)
+    }
+  }
+
+  // 5) meaning 컬럼에서 부분 매치
+  for (const mode of allModes) {
+    const meaningCol = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'meaning_ko'
+    const { data } = await supabase
+      .from('generated_vocab')
+      .select('*')
+      .eq('mode', mode)
+      .ilike(meaningCol, `%${trimmed}%`)
+      .limit(5)
+    if (data?.length) return dbRowToResult(data[0], fromLang)
   }
 
   return null
@@ -175,8 +207,9 @@ function dbRowToResult(r: any, fromLang: 'sw' | 'ko' | 'en'): TranslationResult 
 
   const examples: TranslationResult['examples'] = []
   if (r.example) {
-    const swEx = r.example ?? ''
-    const koEx = r.example_translation_ko ?? ''
+    const isKoMode = r.mode === 'ko'
+    const swEx = isKoMode ? (r.example ?? '') : (r.example_translation_sw ?? '')
+    const koEx = isKoMode ? (r.example_translation_ko ?? '') : (r.example ?? '')
     const enEx = r.example_translation_en ?? ''
     const translation = fromLang === 'ko' ? (koEx || enEx) : fromLang === 'en' ? (enEx || koEx) : (koEx || enEx)
     examples.push({ sentence: r.example, translation, sw: swEx, ko: koEx, en: enEx })
@@ -411,8 +444,6 @@ export function DictionaryScreen({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<TranslationResult | null>(null)
-  const [resultSource, setResultSource] = useState<'db' | 'ai' | null>(null)
-  const [dbNotFound, setDbNotFound] = useState(false)
   const [history, setHistory] = useState<TranslationResult[]>([])
   const [showAdPrompt, setShowAdPrompt] = useState(false)
   const [savedWords, setSavedWords] = useState<Set<string>>(new Set())
@@ -448,43 +479,6 @@ export function DictionaryScreen({
     const trimmed = query.trim()
     if (!trimmed) return
 
-    const fromLang = detectLang(trimmed)
-
-    setLoading(true)
-    setError(null)
-    setShowAdPrompt(false)
-    setDbNotFound(false)
-
-    try {
-      const dbResult = await searchDB(trimmed, fromLang)
-      if (dbResult) {
-        setResult(dbResult)
-        setResultSource('db')
-        setHistory((prev) => {
-          const filtered = prev.filter(
-            (h) => !(h.word.toLowerCase() === dbResult.word.toLowerCase() && h.from === dbResult.from),
-          )
-          return [dbResult, ...filtered].slice(0, 20)
-        })
-        setRefresh((n) => n + 1)
-      } else {
-        setResult(null)
-        setResultSource(null)
-        setDbNotFound(true)
-      }
-    } catch {
-      setResult(null)
-      setResultSource(null)
-      setDbNotFound(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [query])
-
-  const doAiSearch = useCallback(async () => {
-    const trimmed = query.trim()
-    if (!trimmed) return
-
     if (!hasGeminiApi()) {
       setError(lang === 'ko' ? 'Gemini API 키가 설정되지 않았습니다.' : 'Gemini API key haijawekwa.')
       return
@@ -500,12 +494,10 @@ export function DictionaryScreen({
     setLoading(true)
     setError(null)
     setShowAdPrompt(false)
-    setDbNotFound(false)
 
     try {
       const res = await translate(trimmed, fromLang)
       setResult(res)
-      setResultSource('ai')
       setHistory((prev) => {
         const filtered = prev.filter(
           (h) => !(h.word.toLowerCase() === res.word.toLowerCase() && h.from === res.from),
@@ -592,8 +584,6 @@ export function DictionaryScreen({
                   onClick={() => {
                     setQuery('')
                     setResult(null)
-                    setResultSource(null)
-                    setDbNotFound(false)
                     setError(null)
                     inputRef.current?.focus()
                   }}
@@ -662,59 +652,16 @@ export function DictionaryScreen({
 
       {/* 결과 */}
       {result && !showAdPrompt && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold',
-              resultSource === 'db'
-                ? 'bg-[rgba(var(--green),0.15)] text-[rgb(var(--green))]'
-                : 'bg-[rgba(var(--purple),0.15)] text-[rgb(var(--purple))]',
-            )}>
-              {resultSource === 'db' ? '📚 DB' : '🤖 AI'}
-            </span>
-          </div>
-          <ResultCard
-            result={result}
-            lang={lang}
-            onSave={handleSave}
-            isSaved={savedWords.has(`${result.from}:${result.word.toLowerCase()}`)}
-          />
-          {resultSource === 'db' && hasGeminiApi() && (
-            <button
-              onClick={doAiSearch}
-              disabled={loading}
-              className="w-full rounded-xl bg-[rgba(var(--purple),0.12)] py-2.5 text-sm font-bold text-[rgb(var(--purple))] hover:bg-[rgba(var(--purple),0.22)] transition active:scale-[0.98]"
-            >
-              🤖 {lang === 'ko' ? 'AI로 더 자세히 검색하기' : 'Tafuta zaidi na AI'}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* DB에 없을 때 AI 검색 유도 */}
-      {dbNotFound && !result && !loading && !showAdPrompt && (
-        <div className="app-card rounded-2xl p-5 text-center space-y-3">
-          <p className="text-3xl">🔍</p>
-          <p className="text-sm font-bold text-white/80">
-            {lang === 'ko'
-              ? `"${query.trim()}" 검색 결과가 없습니다`
-              : `Hakuna matokeo ya "${query.trim()}"`}
-          </p>
-          <p className="text-xs text-white/40">
-            {lang === 'ko'
-              ? 'AI를 사용하여 번역하시겠습니까?'
-              : 'Ungependa kutafuta kwa AI?'}
-          </p>
-          {hasGeminiApi() && (
-            <Button onClick={doAiSearch} disabled={loading} className="w-full">
-              🤖 {lang === 'ko' ? 'AI로 검색하기' : 'Tafuta kwa AI'}
-            </Button>
-          )}
-        </div>
+        <ResultCard
+          result={result}
+          lang={lang}
+          onSave={handleSave}
+          isSaved={savedWords.has(`${result.from}:${result.word.toLowerCase()}`)}
+        />
       )}
 
       {/* 검색 힌트 (결과 없을 때) */}
-      {!result && !error && !showAdPrompt && !loading && !dbNotFound && (
+      {!result && !error && !showAdPrompt && !loading && (
         <div className="text-center py-8 space-y-3">
           <p className="text-4xl">📖</p>
           <p className="text-sm text-white/40">{t('searchHint', lang)}</p>
@@ -725,25 +672,13 @@ export function DictionaryScreen({
                 className="rounded-lg bg-white/8 px-3 py-1.5 text-xs text-white/50 hover:bg-white/14 transition active:scale-95"
                 onClick={() => {
                   setQuery(w)
-                  setDbNotFound(false)
-                  setResult(null)
-                  setResultSource(null)
-                  setTimeout(async () => {
+                  setTimeout(() => {
                     const fromLang = detectLang(w)
-                    try {
-                      const dbResult = await searchDB(w, fromLang)
-                      if (dbResult) {
-                        setResult(dbResult)
-                        setResultSource('db')
-                        setHistory((prev) => [dbResult, ...prev.filter((h) => h.word !== dbResult.word)].slice(0, 20))
-                      } else {
-                        const res = await translate(w, fromLang)
-                        setResult(res)
-                        setResultSource('ai')
-                        setHistory((prev) => [res, ...prev.filter((h) => h.word !== res.word)].slice(0, 20))
-                      }
+                    translate(w, fromLang).then((res) => {
+                      setResult(res)
+                      setHistory((prev) => [res, ...prev.filter((h) => h.word !== res.word)].slice(0, 20))
                       setRefresh((n) => n + 1)
-                    } catch {}
+                    }).catch(() => {})
                   }, 0)
                 }}
               >
