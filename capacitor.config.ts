@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.kenyavocab.app',
-  appName: 'Kikorea Kiswahili Maneno',
+  appName: 'Jifunze Kikorea kwa Kiswahili',
   webDir: 'dist'
 };
 

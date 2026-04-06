@@ -12,11 +12,8 @@ const TRANSLATE_DB_VERSION = 1
 const TRANSLATE_STORE = 'translations'
 
 const DAILY_FREE_LIMIT = 5
-const AD_BONUS_TRANSLATIONS = 10
-const MAX_AD_WATCHES_PER_DAY = 3
 const DAILY_RESET_KEY = 'translate_daily_reset'
 const USAGE_KEY = 'translate_usage'
-const AD_WATCHES_KEY = 'translate_ad_watches'
 
 export interface TranslationResult {
   word: string
@@ -107,17 +104,14 @@ function resetIfNewDay(): void {
   const today = getTodayKey()
   if (lastReset !== today) {
     localStorage.setItem(DAILY_RESET_KEY, today)
-    localStorage.setItem(USAGE_KEY, '0')
-    localStorage.setItem(AD_WATCHES_KEY, '0')
+    localStorage.setItem(USAGE_KEY, '1')
   }
 }
 
-export function getTranslateUsage(): { used: number; limit: number; adWatches: number; maxAdWatches: number } {
+export function getTranslateUsage(): { used: number; limit: number } {
   resetIfNewDay()
   const used = parseInt(localStorage.getItem(USAGE_KEY) || '0', 10)
-  const adWatches = parseInt(localStorage.getItem(AD_WATCHES_KEY) || '0', 10)
-  const limit = DAILY_FREE_LIMIT + adWatches * AD_BONUS_TRANSLATIONS
-  return { used, limit, adWatches, maxAdWatches: MAX_AD_WATCHES_PER_DAY }
+  return { used, limit: DAILY_FREE_LIMIT }
 }
 
 export function canTranslate(): boolean {
@@ -133,15 +127,7 @@ function incrementUsage(): void {
 
 export function grantTranslateBonus(): void {
   resetIfNewDay()
-  const adWatches = parseInt(localStorage.getItem(AD_WATCHES_KEY) || '0', 10)
-  if (adWatches < MAX_AD_WATCHES_PER_DAY) {
-    localStorage.setItem(AD_WATCHES_KEY, (adWatches + 1).toString())
-  }
-}
-
-export function canWatchTranslateAd(): boolean {
-  const { adWatches, maxAdWatches } = getTranslateUsage()
-  return adWatches < maxAdWatches
+  localStorage.setItem(USAGE_KEY, '0')
 }
 
 // ─── Gemini Flash API ───

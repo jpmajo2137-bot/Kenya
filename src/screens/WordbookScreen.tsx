@@ -9,6 +9,7 @@ import { useToast } from '../components/Toast'
 import type { Deck } from '../lib/types'
 import { t, type Lang } from '../lib/i18n'
 import { GLOBAL_WORD_EXCLUSIONS } from '../lib/filterUtils'
+import { applyEnOverride } from '../lib/displayOverrides'
 import { FlashcardScreen } from './FlashcardScreen'
 
 type Draft = {
@@ -252,7 +253,11 @@ export function WordbookScreen({
                     <div className="text-2xl font-extrabold text-white">{x.sw ?? ''}</div>
                   </div>
                   <div className="mt-2 text-base font-bold text-white/95">{x.ko ?? ''}</div>
-                  {showEnglish && x.en ? <div className="mt-1 text-sm font-semibold text-white/70">{x.en}</div> : null}
+                  {showEnglish && x.en ? (
+                    <div className="mt-1 text-sm font-semibold text-white/70">
+                      {applyEnOverride(x.en.trim(), x.sw) ?? x.en}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => openEdit(x)}>

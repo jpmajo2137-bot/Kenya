@@ -3,6 +3,7 @@
  * 단어 표시가 교정된 경우 교정된 텍스트로 음성 생성
  *
  * 사용: npx tsx scripts/fix-word-audio.ts
+ * 한 단어만: FIX_WORD_AUDIO_ONLY=닻 npx tsx scripts/fix-word-audio.ts
  */
 import * as dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
@@ -21,9 +22,13 @@ const ttsClient = new textToSpeech.TextToSpeechClient()
 /** SSML 사용 단어 (의→에 축약 방지 등): DB의 word → SSML */
 const WORDS_TO_FIX_SSML: Record<string, string> = {
   구식이다: '<speak>구식<break time="30ms"/>으이</speak>',
-  지적이다: '<speak>지<break time="15ms"/>적이다</speak>',
+  지적이다: '<speak>지쩍이다</speak>',
   예비: '<speak>예비<break time="25ms"/>으이</speak>',
   씁쓸하다: '<speak>씁쓸<break time="25ms"/>하다</speak>',
+  /** 단독 '닻'이 '다'로 들리는 경우: 강세 + 짧은 휴지로 받침 분명히 */
+  닻: '<speak><emphasis level="strong">닻</emphasis><break time="60ms"/></speak>',
+  안다: '<speak>안따</speak>',
+  용돈: '<speak>용똔</speak>',
 }
 
 /** 교정할 단어 목록: DB의 word → 음성으로 읽을 텍스트 */
@@ -74,6 +79,18 @@ const WORDS_TO_FIX: Record<string, string> = {
   신고하다: '신고하다',
   잦다: '잦은',
   맹인: '시각장애인, 맹인',
+  닻: '닻',
+  안다: '안따',
+  용돈: '용똔',
+  /** 화면(독점적인)과 동일하게 읽히도록; '독' 강세+긴 휴지 SSML은 부자연스러움 */
+  독점적이다: '독점적인',
+}
+
+/** 발음표기(word_pronunciation)도 함께 바꿀 단어 */
+const WORD_PRONUNCIATION_FIX: Record<string, string> = {
+  안다: 'antta',
+  지적이다: 'jijjeogida',
+  용돈: 'yongtton',
 }
 
 async function ttsKo(textOrSsml: string, useSsml = false): Promise<ArrayBuffer> {
@@ -108,8 +125,10 @@ async function uploadAudio(path: string, audio: ArrayBuffer): Promise<string> {
 async function main() {
   console.log(`단어 음성 교정 스크립트 (Google TTS - ${GCP_VOICE_KO} 여성)\n`)
 
+  const only = process.env.FIX_WORD_AUDIO_ONLY?.trim()
   const allWords = { ...WORDS_TO_FIX }
   for (const [dbWord, spokenText] of Object.entries(allWords)) {
+    if (only && dbWord !== only) continue
     const useSsml = dbWord in WORDS_TO_FIX_SSML
     const ttsInput = useSsml ? WORDS_TO_FIX_SSML[dbWord] : spokenText
     console.log(`🔍 단어 검색: "${dbWord}" → 음성: ${useSsml ? `[SSML]` : `"${spokenText}"`}`)
@@ -138,9 +157,13 @@ async function main() {
         const path = `fix/${row.mode}/${row.id}_word_f_${ts}.mp3`
         const newUrl = await uploadAudio(path, audio)
 
+        const patch: Record<string, string> = { word_audio_url: newUrl }
+        if (WORD_PRONUNCIATION_FIX[dbWord]) {
+          patch.word_pronunciation = WORD_PRONUNCIATION_FIX[dbWord]
+        }
         const { error: updateError } = await supabase
           .from('generated_vocab')
-          .update({ word_audio_url: newUrl })
+          .update(patch)
           .eq('id', row.id)
 
         if (updateError) {

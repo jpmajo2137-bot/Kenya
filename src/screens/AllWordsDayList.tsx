@@ -5,7 +5,25 @@ import { supabase } from '../lib/supabase'
 import { CloudAllWordsScreen } from './CloudAllWordsScreen'
 import { FlashcardScreen, getWrongAnswersCount } from './FlashcardScreen'
 import type { VocabItem } from '../lib/types'
-import { parseLevelFilter, buildTopicOrCondition, getClassifiedDisplayCount, getOrderedCount, CATEGORY_MAX_DAYS, CLASSIFIED_MAX_DAYS, CATEGORY_WORD_EXCLUSIONS, POS_WORD_EXCLUSIONS, GLOBAL_WORD_EXCLUSIONS, getAllWordsNumberTailIds, ORDERED_WORDS_PER_DAY } from '../lib/filterUtils'
+import {
+  parseLevelFilter,
+  buildTopicOrCondition,
+  getClassifiedDisplayCount,
+  getOrderedCount,
+  CATEGORY_MAX_DAYS,
+  CLASSIFIED_MAX_DAYS,
+  CATEGORY_WORD_EXCLUSIONS,
+  POS_WORD_EXCLUSIONS,
+  GLOBAL_WORD_EXCLUSIONS,
+  getAllWordsNumberTailIds,
+  ORDERED_WORDS_PER_DAY,
+  getClassifiedInclusions,
+  getClassifiedWordIds,
+  CLASSIFIED_WORD_EXCLUSIONS,
+  CLASSIFIED_EXTRA_WORDS,
+  buildClassifiedDisplayList,
+} from '../lib/filterUtils'
+import { applyEnOverride } from '../lib/displayOverrides'
 
 const DEFAULT_WORDS_PER_DAY = 40
 
@@ -168,7 +186,75 @@ export function AllWordsDayList({
           return
         }
         if (pf.classified) {
-          setTotalCount(getClassifiedDisplayCount(pf.classified, mode, DEFAULT_WORDS_PER_DAY))
+          const topic = pf.classified
+          if (supabase) {
+            try {
+              const inclusions = getClassifiedInclusions(topic, mode)
+              let list: { word?: string | null; meaning_ko?: string | null }[] = []
+              if (inclusions?.length) {
+                const { data, error } = await supabase
+                  .from('generated_vocab')
+                  .select('*')
+                  .eq('mode', mode)
+                  .in('word', inclusions)
+                  .order('created_at', { ascending: true })
+                if (error) throw error
+                list = (data ?? []).filter((r: { word?: string | null }) => !r.word?.startsWith('__deleted__'))
+                list = list.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
+              } else {
+                const ids = getClassifiedWordIds(topic, mode)
+                if (ids.length === 0) {
+                  setTotalCount(0)
+                  setLoading(false)
+                  return
+                }
+                const BATCH = 100
+                let allData: { word?: string | null; meaning_ko?: string | null }[] = []
+                for (let i = 0; i < ids.length; i += BATCH) {
+                  const chunk = ids.slice(i, i + BATCH)
+                  const { data, error } = await supabase
+                    .from('generated_vocab')
+                    .select('*')
+                    .eq('mode', mode)
+                    .in('id', chunk)
+                    .order('created_at', { ascending: true })
+                  if (error) throw error
+                  allData = allData.concat(data ?? [])
+                }
+                list = allData.filter((r) => !r.word?.startsWith('__deleted__'))
+                const exclusions = CLASSIFIED_WORD_EXCLUSIONS[topic]
+                if (exclusions?.length) {
+                  list = list.filter((r) => !exclusions.includes(r.word ?? ''))
+                }
+                list = list.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
+                const extraWords = CLASSIFIED_EXTRA_WORDS[topic]
+                if (extraWords?.length) {
+                  const existingWords = new Set(list.map((r) => r.word))
+                  const missing = extraWords.filter((w) => !existingWords.has(w))
+                  if (missing.length) {
+                    const { data: extraData } = await supabase
+                      .from('generated_vocab')
+                      .select('*')
+                      .eq('mode', mode)
+                      .in('word', missing)
+                    if (extraData?.length) {
+                      list.push(
+                        ...extraData.filter(
+                          (r: { word?: string | null }) => !r.word?.startsWith('__deleted__'),
+                        ),
+                      )
+                    }
+                  }
+                }
+              }
+              const finalList = buildClassifiedDisplayList(list, topic, mode)
+              setTotalCount(finalList.length)
+            } catch {
+              setTotalCount(getClassifiedDisplayCount(topic, mode, DEFAULT_WORDS_PER_DAY))
+            }
+          } else {
+            setTotalCount(getClassifiedDisplayCount(topic, mode, DEFAULT_WORDS_PER_DAY))
+          }
           setLoading(false)
           return
         }
@@ -316,7 +402,9 @@ export function AllWordsDayList({
                   <div className="text-base font-extrabold text-white">{item.sw}</div>
                   <div className="text-sm font-semibold text-white/80 mt-0.5">{item.ko}</div>
                   {showEnglish && item.en && (
-                    <div className="text-xs text-white/60 mt-0.5">{item.en}</div>
+                    <div className="text-xs text-white/60 mt-0.5">
+                      {applyEnOverride(item.en.trim(), item.sw) ?? item.en}
+                    </div>
                   )}
                 </div>
               </div>
@@ -596,7 +684,9 @@ export function AllWordsDayList({
                     <div className="text-base font-extrabold text-white">{item.sw}</div>
                     <div className="text-sm font-semibold text-white/80 mt-0.5">{item.ko}</div>
                     {showEnglish && item.en && (
-                      <div className="text-xs text-white/60 mt-0.5">{item.en}</div>
+                      <div className="text-xs text-white/60 mt-0.5">
+                        {applyEnOverride(item.en.trim(), item.sw) ?? item.en}
+                      </div>
                     )}
                   </div>
                 </div>

@@ -76,17 +76,21 @@ export const GLOBAL_WORD_EXCLUSIONS: string[] = [
   '쾅', '덮다', '작동하는', '베다', '구금하다', '가두다', '갈아입다', '모금하다', '두드리다', '문자', '포스터', '빼다', '교체하다', '방망이', '애완동물', '전단지', '문지르다',
 ]
 
+/**
+ * KO: 스와힐리어 월(12) + 요일(7) → SW: 한국어 월(12) + 요일(7).
+ * 숫자/수량(extra)·Day1, 시간/날짜 Day1·정렬 앞부분에서 동일 참조 (Machi=3월 포함).
+ */
+export const CLASSIFIED_SW_KR_MONTHS_AND_WEEKDAYS: readonly string[] = [
+  'Januari', 'Februari', 'Machi', 'Aprili', 'Mei', 'Juni', 'Julai',
+  'Agosti', 'Septemba', 'Oktoba', 'Novemba', 'Desemba',
+  'Jumatatu', 'Jumanne', 'Jumatano', 'Alhamisi', 'Ijumaa', 'Jumamosi', 'Jumapili',
+  '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월',
+  '월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일',
+]
+
 /** 분류 단어장에 추가로 포함할 단어 (다른 분류에 속하지만 이 분류에도 표시) */
 export const CLASSIFIED_EXTRA_WORDS: Record<string, string[]> = {
-  '숫자/수량': [
-    // KO mode (word = Swahili)
-    'Januari', 'Februari', 'Machi', 'Aprili', 'Mei', 'Juni', 'Julai',
-    'Agosti', 'Septemba', 'Oktoba', 'Novemba', 'Desemba',
-    'Jumatatu', 'Jumanne', 'Jumatano', 'Alhamisi', 'Ijumaa', 'Jumamosi', 'Jumapili',
-    // SW mode (word = Korean)
-    '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월',
-    '월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일',
-  ],
+  '숫자/수량': [...CLASSIFIED_SW_KR_MONTHS_AND_WEEKDAYS],
 }
 
 /** 특정 카테고리 단어장에서만 제외할 단어 (category → 제외할 word 목록, 다른 단어장에서는 유지) */
@@ -325,15 +329,9 @@ export const CLASSIFIED_DAY1_INCLUSIONS: Record<string, string[]> = {
     'kusafirisha', 'daraja', 'kupeleka', 'iliyopo', 'gurudumu', 'farasi',
     'mjini', 'kugeuka', 'kruzi', 'mkoa', 'kuondoka', 'usafiri wa kupitia', "ng'ambo",
   ],
-  '숫자/수량': [
-    // KO mode (word = Swahili)
-    'Januari', 'Februari', 'Machi', 'Aprili', 'Mei', 'Juni', 'Julai',
-    'Agosti', 'Septemba', 'Oktoba', 'Novemba', 'Desemba',
-    'Jumatatu', 'Jumanne', 'Jumatano', 'Alhamisi', 'Ijumaa', 'Jumamosi', 'Jumapili',
-    // SW mode (word = Korean)
-    '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월',
-    '월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일',
-  ],
+  '숫자/수량': [...CLASSIFIED_SW_KR_MONTHS_AND_WEEKDAYS],
+  // 시간/날짜: 월·요일 Day1 앞 고정 (Machi 등 정렬 누락 시 말일로 밀림 방지)
+  '시간/날짜': [...CLASSIFIED_SW_KR_MONTHS_AND_WEEKDAYS],
 }
 
 /** Day 1에서만 제외할 단어 (classifiedKey → Day 1에서 제외할 word 목록, Day 2+는 유지) */
@@ -441,6 +439,30 @@ export function getClassifiedDayNExclusionsMap(topicName: string, mode: 'ko' | '
   return result
 }
 
+/**
+ * 분류 단어장: 제외·GLOBAL·추가(CLASSIFIED_EXTRA_WORDS) 병합까지 끝난 뒤
+ * 중복 제거 → 정렬 → Day1 우선 배치·Day1 제외를 한 번에 적용 (화면·Day 목록·개수 동일).
+ */
+export function buildClassifiedDisplayList<T extends { word?: string | null; meaning_ko?: string | null }>(
+  rowsAfterExclusionsAndExtras: T[],
+  topicName: string,
+  mode: 'ko' | 'sw',
+): T[] {
+  let filtered = rowsAfterExclusionsAndExtras
+  if (CLASSIFIED_DEDUPLICATE_TOPICS.includes(topicName)) {
+    filtered = deduplicateClassifiedRows(filtered, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY.includes(topicName))
+  }
+  filtered = sortClassifiedRowsByWordOrder(filtered, topicName)
+  const day1Incl = getClassifiedDay1Inclusions(topicName, mode)
+  if (!day1Incl?.length) return filtered
+  const day1Set = new Set(day1Incl)
+  const day1Excl = new Set(CLASSIFIED_DAY1_EXCLUSIONS[topicName] ?? [])
+  const day1Rows = filtered.filter((r) => day1Set.has(r.word ?? ''))
+  const rest = filtered.filter((r) => !day1Set.has(r.word ?? ''))
+  const ordered = [...day1Rows, ...rest]
+  return day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
+}
+
 /** 특정 분류 단어장에서만 제외할 단어 (classifiedKey → 제외할 word 목록) */
 export const CLASSIFIED_WORD_EXCLUSIONS: Record<string, string[]> = {
   '숫자/수량': [
@@ -494,7 +516,7 @@ export const CLASSIFIED_WORD_EXCLUSIONS: Record<string, string[]> = {
     '식민지풍의', '선형의', '시끄럽다', '멋진', '특이한', '특이하다', '밝다', '좁은', '얕다', '흔한', '안쪽의',
     '청바지', '아름다움', '모자', '매력적인', '포즈를 취하다',
   ],
-  '교통/이동': ['kituo cha kuhifadhi', 'tozo', 'ukodishaji', 'chini ya', 'msafara', 'ya mkoani', 'kupotea', 'mahali fulani', 'kutoroka', 'piga mpira', 'kutikisa', 'inayoongoza', 'ushambuliaji wa bomu', 'endelea', 'kugeuza', 'kupiga risasi', 'boya', 'hapo', 'tambaa', 'bawa', 'fuata', 'kutokana na', 'kupatikana', 'tairi la akiba', 'kupaa', 'alama ya njia', 'fuatilia', 'zingira', 'kuzurura', 'kando', 'ya wanamaji', 'kusonga', 'rusha', 'inua', 'roketi', 'kunyakua', 'kuposti', 'buruta',
+  '교통/이동': ['tanki', 'kituo cha kuhifadhi', 'tozo', 'ukodishaji', 'chini ya', 'msafara', 'ya mkoani', 'kupotea', 'mahali fulani', 'kutoroka', 'piga mpira', 'kutikisa', 'inayoongoza', 'ushambuliaji wa bomu', 'endelea', 'kugeuza', 'kupiga risasi', 'boya', 'hapo', 'tambaa', 'bawa', 'fuata', 'kutokana na', 'kupatikana', 'tairi la akiba', 'kupaa', 'alama ya njia', 'fuatilia', 'zingira', 'kuzurura', 'kando', 'ya wanamaji', 'kusonga', 'rusha', 'inua', 'roketi', 'kunyakua', 'kuposti', 'buruta',
     '떨어지다', '스위트룸', '부터',
     '다가오다', '옆으로', '뒤흔들다', '전화', '탱크', '데려다주다', '쫓다',
     '구경하다', '짐', '날다', '가져오다', '숨다', '서킷', '닿다',
@@ -725,13 +747,8 @@ export const COLOR_APPEARANCE_WORD_ORDER: Record<string, string[]> = {
     'wastani', 'asilimia', 'thamani', 'gharama',
   ],
   '시간/날짜': [
-    // KO mode (word = Swahili)
-    'Januari', 'Februari', 'Aprili',
-    'Mei', 'Juni', 'Julai', 'Agosti', 'Septemba', 'Oktoba', 'Novemba', 'Desemba',
-    'Jumatatu', 'Jumanne', 'Jumatano', 'Alhamisi', 'Ijumaa', 'Jumamosi', 'Jumapili',
-    // SW mode (word = Korean)
-    '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월',
-    '월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일',
+    // 월·요일: 공통 상수와 동일 (Februari 다음 Machi=3월)
+    ...CLASSIFIED_SW_KR_MONTHS_AND_WEEKDAYS,
     // KO mode 한자어 월
     '일월', '이월', '삼월', '사월', '오월', '유월', '칠월', '팔월', '구월', '시월', '십일월', '십이월',
     // 시간

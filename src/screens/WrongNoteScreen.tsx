@@ -359,11 +359,11 @@ export function WrongNoteScreen({
             </div>
           ) : (
             displayCloudWords.map((word) => {
-              const rawMeaning = lang === 'sw' 
+              const rawMeaning = meaningLang === 'sw' 
                 ? (word.meaning_sw || word.meaning_en || '') 
                 : (word.meaning_ko || word.meaning_en || '')
               const trimmedMeaning = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
-              const meaning = (lang === 'sw'
+              const meaning = (meaningLang === 'sw'
                 ? applySwOverride(word.word, trimmedMeaning)
                 : applyKoOverride(word.word, trimmedMeaning)) ?? trimmedMeaning
               return (

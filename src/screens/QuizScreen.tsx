@@ -72,7 +72,11 @@ function translateCategory(cat: string, lang: 'sw' | 'ko'): string {
 function meaningOf(item: VocabItem, lang: 'sw' | 'ko') {
   // sw = 스와힐리어 사람용 → 영어로 표시
   // ko = 한국 사람용 → 한국어로 표시
-  if (lang === 'sw') return item.en?.trim() || item.ko
+  if (lang === 'sw') {
+    const en = item.en?.trim()
+    if (en) return applyEnOverride(en, item.sw) ?? en
+    return item.ko
+  }
   return item.ko
 }
 

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Kikorea Kiswahili Maneno</string>
-    <string name="title_activity_main">Kikorea Kiswahili Maneno</string>
+    <string name="app_name">Jifunze Kikorea kwa Kiswahili</string>
+    <string name="title_activity_main">Jifunze Kikorea kwa Kiswahili</string>
     <string name="package_name">com.kenyavocab.app</string>
     <string name="custom_url_scheme">com.kenyavocab.app</string>
 </resources>

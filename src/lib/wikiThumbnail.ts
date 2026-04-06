@@ -3,6 +3,20 @@
  * 브라우저에서 직접 호출; CORS 허용되는 엔드포인트 사용.
  */
 
+/** meaning_en 기반 자동 후보보다 적합한 위키 제목 (단어별) */
+const WIKI_SEARCH_OVERRIDE_BY_WORD: Record<string, string[]> = {
+  // goodbye — "Goodbye" 문서 썸네일이 부적절한 경우가 있어 작별·인사 연상 이미지 우선
+  'kwa heri': ['Wave (gesture)', 'Handshake', 'Bowing'],
+  // the injured — Injury 등 자동 후보가 부적절할 때 응급·의료 연상
+  waliojeruhiwa: ['Ambulance', 'First aid kit', 'Emergency medical services'],
+  // be sick of / tired of — 자동 후보가 어색할 때 지루함·반복 연상
+  'kuchoshwa na': ['Boredom', 'Traffic congestion', 'Fatigue'],
+  // stab — Stab 문서 썸네일이 과할 수 있어 도구·조리 연상
+  dunga: ['Kitchen knife', 'Knife', 'Blade'],
+  // chip (감자칩) — "chip"만으로는 전자칩 등 부적합 연상 가능
+  칩: ['Potato chip', 'Potato chips', 'Snack food'],
+}
+
 function stripKoreanSegments(text: string): string {
   if (!text.trim()) return text
   const segments = text.split(';').map((s) => s.trim()).filter(Boolean)
@@ -15,6 +29,11 @@ export function wikiSearchTitlesFromMeaningEn(
   meaningEn: string | null | undefined,
   word?: string | null,
 ): string[] {
+  const wKey = word?.trim().toLowerCase()
+  if (wKey && WIKI_SEARCH_OVERRIDE_BY_WORD[wKey]) {
+    return WIKI_SEARCH_OVERRIDE_BY_WORD[wKey]
+  }
+
   const cleaned = stripKoreanSegments((meaningEn ?? '').trim())
   const titles = new Set<string>()
 

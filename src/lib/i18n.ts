@@ -2,7 +2,7 @@ export type Lang = 'sw' | 'ko'
 
 const texts = {
   // App title
-  appTitle1: { sw: 'Kikorea Kiswahili Maneno', ko: 'Kikorea Kiswahili Maneno' },
+  appTitle1: { sw: 'Jifunze Kikorea kwa Kiswahili', ko: 'Jifunze Kikorea kwa Kiswahili' },
   appTitle2: { sw: '', ko: '' },
 
   // Default deck name

@@ -1,6 +1,7 @@
 import { supabase, type GeneratedVocab, type VocabMode } from './supabase'
 import { generateVocabulary, CATEGORIES } from './openai'
 import { azureSynthesizeSpeech } from './azureTts'
+import { englishGlossLineForTts } from './meaningEnTts'
 
 // ===========================================
 // Vocabulary Generator Service
@@ -137,7 +138,7 @@ export async function generateAndSaveVocabulary(config: GenerationConfig): Promi
         status.completed++
 
         // 영어 뜻 음성 (Azure TTS 사용)
-        const enAudio = await azureSynthesizeSpeech(vocab.meaning_en, 'en')
+        const enAudio = await azureSynthesizeSpeech(englishGlossLineForTts(vocab.meaning_en), 'en')
         vocab.meaning_en_audio_url = await uploadAudio(enAudio, `${config.mode}/${vocab.word}_meaning_en.mp3`)
         status.completed++
 

@@ -194,9 +194,7 @@ const WORD_SPEED_OVERRIDE: Record<string, string> = {
   독점적이다: '0.85',
 }
 
-const WORD_SSML_OVERRIDE: Record<string, string> = {
-  독점적이다: "<emphasis level='strong'>독</emphasis><break time='200ms'/>점적인",
-}
+const WORD_SSML_OVERRIDE: Record<string, string> = {}
 
 // Collect unique words that need TTS regeneration
 function getWordOverrideTargets(): Map<string, { ttsText: string; lang: string; voice?: string; speed?: string; ssml?: string }> {
@@ -252,7 +250,7 @@ function getWordOverrideTargets(): Map<string, { ttsText: string; lang: string; 
 // B. 영어 뜻(meaning_en) 음성
 // ═══════════════════════════════════════════════════════════
 
-const EN_FORCE_TTS = new Set(['watch', 'future, later', 'an elderly man', 'coal, charcoal', 'much, many', 'lamp; light/torch', 'news', 'a little', 'slowly', 'parents', 'to be, to be located', 'usually', 'repeat', 'especially', 'interesting', 'a drag; something boring/annoying', 'save', 'package', 'queen', 'yet / still', 'creep/crawl', 'understand, grasp', 'dust, wipe', 'to be cute', 'operate', 'engaged/busy', 'to look after', 'to be possible', 'to be aware', 'special offer', 'captain', 'form', 'brief', 'collapse / fall down', 'pin', 'legitimate; legal/valid', 'to adjust / adapt', 'to be tight', 'to be located', 'bin', 'crop', 'zipper', 'calm down', 'to me', 'to be relieved', 'regarding', 'decide', 'to reverse/turn something over', 'to bear/give birth', 'stunning; extremely beautiful/impressive', 'call', 'late', 'male rabbit', 'turn; change direction/position', 'introduce', 'shock, fright, alarm', 'to be enough', 'prefer', 'stray (animal)', 'institution', 'programming schedule', 'abandon', 'apparent/obvious', 'rationally', 'immediate, instant', 'harden, thicken', 'to mount; to attach onto a backing/support', 'jump at/on, pounce on', 'hire', 'combination / code', 'controversial', 'dangerous', 'to preach', 'to be discouraged', 'to divine; to predict/foretell', 'persuade', 'fishing; the activity/industry of catching fish', 'preacher', 'meantime / meanwhile', 'complicated', 'desirable', 'adopt/approve', 'construction', 'in danger / at risk', 'convey', 'military', 'membership', 'method', 'to nominate/appoint', 'nation; a country/state', 'peasant; poor farm worker/farmer', 'to accompany / go together', 'theatrical', 'eager', 'to be eager', 'proud', 'authority', 'visual aid', 'activity', 'remaining/balance', 'inappropriate', 'religious person, believer', 'to make/force', 'symbol, sign, character', 'move', 'formal', 'interaction', 'idea, thinking', 'wisdom, good sense', 'to benefit (from), to gain', 'surrender', 'randomly', 'gambling', 'to dub; to give a nickname/title', 'enough', 'online', 'rational', 'to doze off, to be drowsy', 'ever, on earth', 'unresolved', 'bridge of the nose', 'buoy', 'private/secret', 'from the provinces', 'to cater; to provide food/service for an event', 'to stress someone; to make someone tense/worried', 'to jam; to shove/pack in', 'to be infected, to catch', 'turnout; junction/turn-off point', 'unfair', 'dare', 'around', 'violate', 'comedian', 'distinctly', 'to make good use', 'inflate', 'to conceive/become pregnant', 'unpleasant', 'physical; relating to the body/material', 'to drift/wander aimlessly', 'medical check-up', 'flexible', 'approach', 'worthwhile; worth the time/effort', 'management', "blacksmith's workshop", 'to be alleged', 'out', 'beam', 'distant', 'tactical; relating to tactics/strategy', 'without emotion', 'relocation, transfer', 'insertion; adding/putting in', 'programming schedule', 'programming', 'drug cocktail', 'to elbow, accidentally hit/push with the elbow', 'supportive; agreeing with and backing someone/something', 'the latest news/updates', 'empirical; based on observation/experiment', 'in critical condition', 'optic', 'formal dance', 'restoration; renovation/repair', 'mockery, irony', 'stair/stairs'])
+const EN_FORCE_TTS = new Set(['watch', 'future, later', 'an elderly man', 'coal, charcoal', 'much, many', 'lamp; light/torch', 'news', 'a little', 'slowly', 'parents', 'to be, to be located', 'usually', 'repeat', 'especially', 'interesting', 'a drag; something boring/annoying', 'save', 'package', 'queen', 'yet, still', 'creep, crawl', 'crawl', 'understand, grasp', 'dust, wipe', 'to be cute', 'operate', 'engaged, busy', 'to look after', 'to be possible', 'to be aware', 'special offer', 'captain', 'form', 'brief', 'collapse, fall down', 'pin', 'legitimate; legal/valid', 'adjust, adapt', 'to adjust, adapt', 'to be tight', 'to be located', 'bin', 'crop', 'zipper', 'calm down', 'to me', 'to be relieved', 'regarding', 'decide', 'reverse', 'bear, give birth', 'to bear, give birth', 'stunning; extremely beautiful/impressive', 'call', 'late', 'male rabbit', 'turn; change direction/position', 'introduce', 'shock, fright, alarm', 'to be enough', 'prefer', 'stray (animal)', 'institution', 'programming schedule', 'abandon', 'apparent/obvious', 'rationally', 'immediate, instant', 'harden, thicken', 'to mount; to attach onto a backing/support', 'jump at/on, pounce on', 'hire', 'combination, code', 'controversial', 'dangerous', 'to preach', 'to be discouraged', 'to divine; to predict/foretell', 'persuade', 'fishing; the activity/industry of catching fish', 'preacher', 'meanwhile', 'complicated', 'desirable', 'adopt/approve', 'construction', 'in danger, at risk', 'convey', 'military', 'membership', 'method', 'to nominate, appoint', 'nominate, appoint', 'nation; a country/state', 'peasant; poor farm worker/farmer', 'to accompany / go together', 'theatrical', 'eager', 'to be eager', 'proud', 'authority', 'visual aid', 'activity', 'remaining, balance', 'inappropriate', 'religious person, believer', 'to make, force', 'make, force', 'symbol, sign, character', 'move', 'formal', 'interaction', 'idea, thinking', 'wisdom, good sense', 'to benefit (from), to gain', 'surrender', 'randomly', 'gambling', 'to dub; to give a nickname/title', 'enough', 'online', 'rational', 'to doze off, to be drowsy', 'ever, on earth', 'unresolved', 'bridge of the nose', 'buoy', 'private, secret', 'from the provinces', 'to cater; to provide food/service for an event', 'to stress someone; to make someone tense/worried', 'to jam; to shove/pack in', 'to be infected, to catch', 'turnout; junction/turn-off point', 'unfair', 'dare', 'around', 'violate', 'comedian', 'distinctly', 'to make good use', 'inflate', 'conceive, become pregnant', 'to conceive, become pregnant', 'unpleasant', 'physical; relating to the body/material', 'wander aimlessly', 'to wander aimlessly', 'medical check-up', 'flexible', 'approach', 'worthwhile; worth the time/effort', 'management', "blacksmith's workshop", 'to be alleged', 'out', 'beam', 'distant', 'tactical; relating to tactics/strategy', 'without emotion', 'relocation, transfer', 'insertion; adding/putting in', 'programming schedule', 'programming', 'cocktail', 'elbow, accidentally hit or push with the elbow', 'to elbow, accidentally hit or push with the elbow', 'supportive; agreeing with and backing someone/something', 'the latest news', 'empirical; based on observation/experiment', 'in critical condition', 'optic', 'formal dance', 'restoration; renovation/repair', 'mockery, irony', 'stair/stairs'])
 
 const EN_VOICE_OVERRIDE: Record<string, string> = {
   watch: 'en-US-JennyNeural',
@@ -270,39 +268,24 @@ const EN_VOICE_OVERRIDE: Record<string, string> = {
 const EN_TTS_TEXT_OVERRIDE: Record<string, string> = {
   'lamp; light/torch': 'lamp; light torch',
   'a drag; something boring/annoying': 'a drag; something boring annoying',
-  'yet / still': 'yet still',
-  'creep/crawl': 'creep crawl',
-  'engaged/busy': 'engaged busy',
-  'collapse / fall down': 'collapse fall down',
   'legitimate; legal/valid': 'legitimate; legal valid',
-  'to adjust / adapt': 'to adjust adapt',
-  'to reverse/turn something over': 'to reverse turn something over',
-  'to bear/give birth': 'to bear give birth',
   'stunning; extremely beautiful/impressive': 'stunning; extremely beautiful impressive',
   'turn; change direction/position': 'turn; change direction position',
   'stray (animal)': 'stray animal',
   'apparent/obvious': 'apparent obvious',
-  'private/secret': 'private secret',
   'to cater; to provide food/service for an event': 'to cater; to provide food service for an event',
   'to stress someone; to make someone tense/worried': 'to stress someone; to make someone tense worried',
   'to jam; to shove/pack in': 'to jam; to shove pack in',
   'turnout; junction/turn-off point': 'turnout; junction turn-off point',
-  'to conceive/become pregnant': 'to conceive become pregnant',
   'to mount; to attach onto a backing/support': 'to mount; to attach onto a backing support',
   'jump at/on, pounce on': 'jump at on, pounce on',
-  'combination / code': 'combination code',
   'to divine; to predict/foretell': 'to divine; to predict foretell',
   'fishing; the activity/industry of catching fish': 'fishing; the activity industry of catching fish',
-  'meantime / meanwhile': 'meantime meanwhile',
   'adopt/approve': 'adopt approve',
-  'in danger / at risk': 'in danger at risk',
-  'to nominate/appoint': 'to nominate appoint',
   'nation; a country/state': 'nation; a country state',
   'peasant; poor farm worker/farmer': 'peasant; poor farm worker farmer',
   'to accompany / go together': 'to accompany go together',
   'to be eager': 'eager',
-  'remaining/balance': 'remaining balance',
-  'to make/force': 'to make force',
   'to benefit (from), to gain': 'to benefit from, to gain',
   'to dub; to give a nickname/title': 'to dub; to give a nickname title',
   'stair/stairs': 'stairs',
@@ -316,16 +299,34 @@ const EN_SSML_OVERRIDE: Record<string, string> = {
   'much, many': "much<break time='300ms'/>many",
   'to be, to be located': "to be<break time='250ms'/>to be located",
   'mockery, irony': "mockery<break time='250ms'/>irony",
+  'combination, code': "combination<break time='250ms'/>code",
+  'in danger, at risk': "in danger<break time='250ms'/>at risk",
+  'yet, still': "yet<break time='250ms'/>still",
+  'creep, crawl': "creep<break time='250ms'/>crawl",
+  'remaining, balance': "remaining<break time='250ms'/>balance",
+  'nominate, appoint': "nominate<break time='250ms'/>appoint",
+  'to nominate, appoint': "to nominate<break time='250ms'/>appoint",
+  'engaged, busy': "engaged<break time='250ms'/>busy",
+  'make, force': "make<break time='250ms'/>force",
+  'to make, force': "to make<break time='250ms'/>force",
+  'collapse, fall down': "collapse<break time='250ms'/>fall down",
+  'adjust, adapt': "adjust<break time='250ms'/>adapt",
+  'to adjust, adapt': "to adjust<break time='250ms'/>adapt",
+  'private, secret': "private<break time='250ms'/>secret",
+  'bear, give birth': "bear<break time='250ms'/>give birth",
+  'to bear, give birth': "to bear<break time='250ms'/>give birth",
+  'conceive, become pregnant': "conceive<break time='250ms'/>become pregnant",
+  'to conceive, become pregnant': "to conceive<break time='250ms'/>become pregnant",
 }
 
 // EN_DISPLAY_OVERRIDE: original DB meaning_en → displayed text
 // We need a reverse map to find DB records
 const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   about: 'around', breach: 'violate', comic: 'comedian', distinct: 'distinctly',
-  inflation: 'inflate', medical: 'medical check-up', loom: 'approach',
+  medical: 'medical check-up', loom: 'approach',
   forge: "blacksmith's workshop", allegedly: 'to be alleged', outing: 'out',
   'beam of light': 'beam', 'to distance': 'distant', clinical: 'without emotion',
-  cocktail: 'drug cocktail', critically: 'in critical condition', optical: 'optic',
+  'drug cocktail': 'cocktail', critically: 'in critical condition', optical: 'optic',
   'a formal': 'formal dance', irony: 'mockery, irony', exile: 'relocation, transfer',
   'management; the act of running/organizing a business or team': 'management',
   'to exploit': 'to make good use', 'asleep; not aware': 'to doze off, to be drowsy',
@@ -333,7 +334,7 @@ const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   outstanding: 'unresolved', bridge: 'bridge of the nose',
   contract: 'to be infected, to catch', venture: 'dare', float: 'buoy',
   buck: 'male rabbit', male: 'male rabbit', pack: 'package',
-  'to be late': 'late', cut: 'crop', cute: 'to be cute', fly: 'zipper',
+  'to be late': 'late', cut: 'crop', cute: 'to be cute',
   'to settle': 'calm down', aspire: 'operate',
   'to mind; to look after': 'to look after', possible: 'to be possible',
   aware: 'to be aware', offer: 'special offer', master: 'captain',
@@ -354,13 +355,42 @@ const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   exploit: 'to benefit (from), to gain', 'to submit': 'surrender',
   random: 'randomly', gaming: 'gambling', sufficiently: 'enough',
   virtual: 'online', rationally: 'rational', involved: 'complicated',
-  building: 'construction', vulnerable: 'in danger / at risk',
+  building: 'construction', vulnerable: 'in danger, at risk',
   communicate: 'convey', martial: 'military', means: 'method',
   'to troop': 'to accompany / go together', 'theatrical; dramatic': 'theatrical',
   'to be proud': 'proud', power: 'authority', visual: 'visual aid',
-  action: 'activity', gala: 'formal', remainder: 'remaining/balance',
+  action: 'activity', gala: 'formal', remainder: 'remaining, balance',
   character: 'symbol, sign, character', seize: 'understand, grasp',
   'to dust': 'dust, wipe',
+  'combination / code': 'combination, code',
+  'meantime / meanwhile': 'meanwhile',
+  'in danger / at risk': 'in danger, at risk',
+  'yet / still': 'yet, still',
+  'creep/crawl': 'creep, crawl',
+  'remaining/balance': 'remaining, balance',
+  'nominate/appoint': 'nominate, appoint',
+  'to nominate/appoint': 'to nominate, appoint',
+  'engaged/busy': 'engaged, busy',
+  'make/force': 'make, force',
+  'to make/force': 'to make, force',
+  'collapse / fall down': 'collapse, fall down',
+  'adjust / adapt': 'adjust, adapt',
+  'to adjust / adapt': 'to adjust, adapt',
+  'elbow, accidentally hit/push with the elbow': 'elbow, accidentally hit or push with the elbow',
+  'to elbow, accidentally hit/push with the elbow':
+    'to elbow, accidentally hit or push with the elbow',
+  'private/secret': 'private, secret',
+  'the latest news/updates': 'the latest news',
+  'reverse/turn something over': 'reverse',
+  'to reverse/turn something over': 'reverse',
+  'crawl / creep': 'crawl',
+  'creep / crawl': 'crawl',
+  'bear/give birth': 'bear, give birth',
+  'to bear/give birth': 'to bear, give birth',
+  'conceive/become pregnant': 'conceive, become pregnant',
+  'to conceive/become pregnant': 'to conceive, become pregnant',
+  'drift/wander aimlessly': 'wander aimlessly',
+  'to drift/wander aimlessly': 'to wander aimlessly',
 }
 
 // Build reverse map: displayedText → Set of original DB meaning_en values

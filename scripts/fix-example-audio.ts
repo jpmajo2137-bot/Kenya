@@ -20,8 +20,25 @@ const GCP_TTS_SPEED = 0.85
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 const ttsClient = new textToSpeech.TextToSpeechClient()
 
-/** 교정할 예문 목록: { db, tts, ssml? (있으면 tts 대신 SSML 사용) } */
-const EXAMPLES_TO_FIX: Array<{ db: string; tts: string; ssml?: string }> = [
+/** 교정할 예문 목록: { db, tts, ssml? (있으면 tts 대신 SSML 사용), pronunciation? (있으면 example_pronunciation 동시 갱신) } */
+const EXAMPLES_TO_FIX: Array<{ db: string; tts: string; ssml?: string; pronunciation?: string }> = [
+  {
+    db: '요즘 기름값이 급등했어요.',
+    tts: '요즘 기름갑씨 급등했어요.',
+    pronunciation: 'yojeun gireumgabssi geupdeunghaesseoyo.',
+  },
+  /** ~에 있어요. 종결을 평서문에 가깝게 (의문형 상승 완화) */
+  {
+    db: '정류장은 언덕 아래쪽에 있어요.',
+    tts: '정류장은 언덕 아래쪽에 있어요.',
+    ssml:
+      '<speak>정류장은 언덕 아래쪽에 <prosody pitch="-1st" rate="96%">있어요</prosody>.<break time="80ms"/></speak>',
+  },
+  {
+    db: '참가자가 스물하나 명이에요.',
+    tts: '참가자가 스물한 명이에요.',
+    pronunciation: 'chamgajaga seumulhan myeongieyo.',
+  },
   { db: '이 작품은 분위기가 정말 좋아요.', tts: '이 작품은 분위기가 정말 좋아요.' },
   { db: '주차 위반으로 벌금을 냈어요.', tts: '주차 위반으로 벌금을 냈어요.' },
   { db: '이 잔은 크리스털로 만들었어요.', tts: '이 잔은 크리스탈로 만들었어요.' },
@@ -137,13 +154,13 @@ async function uploadAudio(path: string, audio: ArrayBuffer): Promise<string> {
 async function main() {
   console.log(`예문 음성 교정 스크립트 (Google TTS - ${GCP_VOICE_KO} 여성)\n`)
 
-  for (const { db: dbText, tts: ttsText, ssml } of EXAMPLES_TO_FIX) {
+  for (const { db: dbText, tts: ttsText, ssml, pronunciation } of EXAMPLES_TO_FIX) {
     const useSsml = !!ssml
-    console.log(`🔍 예문 검색: "${dbText}" → 음성: ${useSsml ? '[SSML]' : `"${ttsText}"`}`)
+    console.log(`🔍 예문 검색: "${dbText}" → 음성: ${useSsml ? '[SSML]' : `"${ttsText}"`}${pronunciation ? ` → 발음: [${pronunciation}]` : ''}`)
 
     const { data, error } = await supabase
       .from('generated_vocab')
-      .select('id, mode, word, example, example_audio_url')
+      .select('id, mode, word, example, example_audio_url, example_translation_ko')
       .eq('example', dbText)
 
     if (error) {
@@ -167,10 +184,20 @@ async function main() {
         const path = `fix/${row.mode}/${row.id}_example_f_${ts}.mp3`
         const newUrl = await uploadAudio(path, audio)
 
-        const { error: updateError } = await supabase
-          .from('generated_vocab')
-          .update({ example_audio_url: newUrl })
-          .eq('id', row.id)
+        const patch: {
+          example_audio_url: string
+          example?: string
+          example_pronunciation?: string
+          example_translation_ko?: string
+        } = { example_audio_url: newUrl }
+        if (pronunciation !== undefined) patch.example_pronunciation = pronunciation
+        if (ttsText !== dbText) {
+          patch.example = ttsText
+          const ko = row.example_translation_ko?.trim()
+          if (ko === dbText.trim()) patch.example_translation_ko = ttsText
+        }
+
+        const { error: updateError } = await supabase.from('generated_vocab').update(patch).eq('id', row.id)
 
         if (updateError) {
           console.error(`  ❌ 업데이트 실패: ${updateError.message}`)

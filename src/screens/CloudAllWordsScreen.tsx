@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { Button } from '../components/Button'
 import { VocabImage } from '../components/VocabImage'
 import { wikiSearchTitlesFromMeaningEn } from '../lib/wikiThumbnail'
-import { hasOpenAI } from '../lib/env'
+import { hasAzureTts, hasOpenAI } from '../lib/env'
+import { azureSynthesizeSpeech } from '../lib/azureTts'
 import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import { generateWordImage } from '../lib/openai'
@@ -20,7 +21,14 @@ import {
   WORD_DISPLAY_OVERRIDE,
   EN_DISPLAY_OVERRIDE_BY_EXAMPLE,
   MUTE_MEANING_EN_AUDIO_BY_WORD,
+  PREFER_CLIENT_MEANING_EN_TTS_BY_WORD,
 } from '../lib/displayOverrides'
+import {
+  stripKoreanFromEnDisplay,
+  englishGlossLineForTts,
+  meaningEnGlossNeedsSlashTtsFix,
+} from '../lib/meaningEnTts'
+import { koModeSwahiliPronDisplay } from '../lib/swahiliPronDisplay'
 import { 
   getVocabFromCache, 
   getCacheCount, 
@@ -28,7 +36,7 @@ import {
   onOnlineStatusChange,
   getMediaFromCache
 } from '../lib/offlineCache'
-import { parseLevelFilter, buildTopicOrCondition, matchesTopicFilter, getClassifiedWordIds, isWordInClassifiedTopic, getOrderedWordIds, ORDERED_WORD_EXCLUSIONS, CLASSIFIED_WORD_EXCLUSIONS, getClassifiedInclusions, CLASSIFIED_EXTRA_WORDS, getClassifiedDay1Inclusions, CLASSIFIED_DAY1_EXCLUSIONS, getClassifiedDayNExclusions, getClassifiedDayNExclusionsMap, CLASSIFIED_DAYN_EXCLUDE_PREV_DAY, CLASSIFIED_DEDUPLICATE_TOPICS, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY, getWordsFromPreviousDay, deduplicateClassifiedRows, isRowExcludedByDayN, GLOBAL_WORD_EXCLUSIONS, CATEGORY_WORD_EXCLUSIONS, POS_WORD_EXCLUSIONS, POS_DAYN_EXCLUSIONS_BY_MODE, sortClassifiedRowsByWordOrder, getAllWordsNumberTailIds } from '../lib/filterUtils'
+import { parseLevelFilter, buildTopicOrCondition, matchesTopicFilter, getClassifiedWordIds, isWordInClassifiedTopic, getOrderedWordIds, ORDERED_WORD_EXCLUSIONS, CLASSIFIED_WORD_EXCLUSIONS, getClassifiedInclusions, CLASSIFIED_EXTRA_WORDS, getClassifiedDayNExclusions, getClassifiedDayNExclusionsMap, CLASSIFIED_DAYN_EXCLUDE_PREV_DAY, getWordsFromPreviousDay, isRowExcludedByDayN, GLOBAL_WORD_EXCLUSIONS, CATEGORY_WORD_EXCLUSIONS, POS_WORD_EXCLUSIONS, POS_DAYN_EXCLUSIONS_BY_MODE, buildClassifiedDisplayList, getAllWordsNumberTailIds } from '../lib/filterUtils'
 
 type Mode = 'sw' | 'ko'
 
@@ -76,14 +84,63 @@ function Pron({ value }: { value: string | null }) {
   )
 }
 
-/** 스피커 아이콘 버튼 (스피커 + 음파) - 오프라인 지원 */
-function AudioBtn({ url, muted }: { url: string | null; muted?: boolean }) {
+/** 스피커 아이콘 버튼 (스피커 + 음파) - 오프라인 지원; 영어 뜻은 URL 실패 시 Azure 여성 음성(표시 문구) 폴백 */
+function AudioBtn({
+  url,
+  muted,
+  /** 영어 뜻 열에서만 true — Azure 폴백·표시≠DB 시 클라이언트 TTS */
+  meaningEnAzure,
+  ttsFallbackText,
+  /** DB meaning_en과 화면 finalEn 첫 구절이 다르면 URL은 예전 TTS일 수 있음 → Azure로 표시 문구만 읽기 */
+  preferClientTtsForMeaningEn,
+}: {
+  url: string | null
+  muted?: boolean
+  meaningEnAzure?: boolean
+  /** meaning_en 전용: 화면에 보이는 영어 뜻(URL 404·재생 실패 시 TTS) */
+  ttsFallbackText?: string
+  preferClientTtsForMeaningEn?: boolean
+}) {
   const blobUrlRef = useRef<string | null>(null)
 
-  if (!url) return null
+  const canAzureMeaningEn =
+    meaningEnAzure &&
+    Boolean(ttsFallbackText?.trim()) &&
+    hasAzureTts() &&
+    !muted
+
+  if (!url && !canAzureMeaningEn) return null
 
   const playAudio = async () => {
     if (muted) return
+
+    const runAzureFallback = async () => {
+      if (!canAzureMeaningEn || !ttsFallbackText) return
+      const line = englishGlossLineForTts(ttsFallbackText)
+      if (!line || line === '—') return
+      try {
+        const buf = await azureSynthesizeSpeech(line, 'en')
+        const blob = new Blob([buf], { type: 'audio/mpeg' })
+        const objectUrl = URL.createObjectURL(blob)
+        const a2 = new Audio(objectUrl)
+        a2.onended = () => URL.revokeObjectURL(objectUrl)
+        a2.onerror = () => URL.revokeObjectURL(objectUrl)
+        await a2.play()
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (preferClientTtsForMeaningEn && canAzureMeaningEn && ttsFallbackText) {
+      await runAzureFallback()
+      return
+    }
+
+    if (!url) {
+      await runAzureFallback()
+      return
+    }
+
     let urlToPlay = url
 
     // 오프라인이면 캐시에서 가져오기
@@ -102,8 +159,24 @@ function AudioBtn({ url, muted }: { url: string | null; muted?: boolean }) {
       }
     }
 
+    let fallbackOnce = false
+    const tryAzureOnce = async () => {
+      if (fallbackOnce) return
+      fallbackOnce = true
+      await runAzureFallback()
+    }
+
     const a = new Audio(urlToPlay)
-    a.play().catch(() => {})
+    if (meaningEnAzure) {
+      a.addEventListener('error', () => {
+        void tryAzureOnce()
+      })
+    }
+    try {
+      await a.play()
+    } catch {
+      await tryAzureOnce()
+    }
   }
 
   return (
@@ -129,41 +202,6 @@ function AudioBtn({ url, muted }: { url: string | null; muted?: boolean }) {
       </svg>
     </button>
   )
-}
-
-
-/** -하다 동사 중 'to be X'가 아닌 'to + 동사' 형태로 써야 하는 단어 (서빙하다 → to serve 등) */
-const KO_VERB_EN_INFINITIVE_OVERRIDE: Record<string, string> = {
-  서빙하다: 'to serve',
-  재배하다: 'to cultivate',
-  '씩 웃다': 'to grin',
-  선택하다: 'to choose',
-  교육하다: 'to educate',
-}
-
-/** 영어에서 'to be + 형용사'만 허용할 단어 (이 외는 'to + 동사원형'으로 표기해 문법 맞춤) */
-const TO_BE_ADJECTIVES = new Set([
-  'important', 'necessary', 'possible', 'impossible', 'sure', 'certain', 'likely', 'available', 'able',
-  'afraid', 'aware', 'careful', 'happy', 'sad', 'ready', 'wrong', 'right', 'true', 'false', 'clear', 'obvious',
-  'glad', 'sorry', 'pleased', 'surprised', 'interested', 'excited', 'worried', 'annoyed', 'confident', 'proud',
-  'grateful', 'thankful', 'faithful', 'honest', 'patient', 'nervous', 'anxious', 'curious', 'jealous', 'embarrassed',
-  'ashamed', 'satisfied', 'content', 'comfortable', 'uncomfortable', 'familiar', 'strange', 'similar', 'different',
-  'useful', 'harmful', 'helpful', 'successful', 'famous', 'popular', 'essential', 'vital', 'critical', 'significant',
-])
-
-/** 영어 뜻에 섞인 한글(예: necessarily; 반드시) 제거 */
-function stripKoreanFromEnDisplay(text: string): string {
-  if (!text.trim()) return text
-  const segments = text.split(';').map((s) => s.trim()).filter(Boolean)
-  const enOnly = segments.filter((s) => !/[\uAC00-\uD7A3]/.test(s))
-  return enOnly.length ? enOnly.join('; ') : text
-}
-
-/** 영어 예문에서 'to + 동사원형' 추출 (예: "I need to choose one" → "choose") */
-function getInfinitiveFromEnExample(exampleEn: string | null): string | null {
-  if (!exampleEn?.trim()) return null
-  const m = exampleEn.match(/\bto\s+([a-z]+)\b/i)
-  return m ? m[1].toLowerCase() : null
 }
 
 export function CloudAllWordsScreen({
@@ -366,66 +404,37 @@ export function CloudAllWordsScreen({
           )
           filtered = [...filtered, ...extras]
         }
-        if (CLASSIFIED_DEDUPLICATE_TOPICS.includes(pf.classified!)) {
-          filtered = deduplicateClassifiedRows(filtered, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY.includes(pf.classified!))
-        }
-        filtered = sortClassifiedRowsByWordOrder(filtered, pf.classified!)
-        const day1Incl = getClassifiedDay1Inclusions(pf.classified!, mode)
-        if (day1Incl?.length) {
-          const day1Set = new Set(day1Incl)
-          const day1Excl = new Set(CLASSIFIED_DAY1_EXCLUSIONS[pf.classified] ?? [])
-          const day1Rows = filtered.filter((r) => day1Set.has(r.word ?? ''))
-          const rest = filtered.filter((r) => !day1Set.has(r.word ?? ''))
-          const ordered = [...day1Rows, ...rest]
-          const filteredOutExcl = day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
-          const total = filteredOutExcl.length
-          if (dayNumber) {
-            const dayNExcl = getClassifiedDayNExclusions(pf.classified!, dayNumber, mode)
-            const dayNExclSet = dayNExcl?.length ? new Set(dayNExcl) : null
-            let rows: CloudRow[]
-            if (dayNExclSet) {
-              let idx = (dayNumber - 1) * wordsPerDay
-              rows = []
-              while (rows.length < wordsPerDay && idx < filteredOutExcl.length) {
-                const r = filteredOutExcl[idx++]
-                if (!isRowExcludedByDayN(r, dayNExclSet)) rows.push(r)
-              }
-            } else {
-              const start = (dayNumber - 1) * wordsPerDay
-              rows = filteredOutExcl.slice(start, start + wordsPerDay) as CloudRow[]
-            }
-            setTotalCount(total)
-            setRows(rows)
-          } else {
-            setTotalCount(total)
-            setRows(filteredOutExcl.slice(0, 500) as CloudRow[])
+        filtered = buildClassifiedDisplayList(filtered, pf.classified!, mode)
+        const total = filtered.length
+        if (dayNumber) {
+          let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
+          const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
+          if (excludePrevDays?.includes(dayNumber)) {
+            const prevWords = getWordsFromPreviousDay(
+              filtered,
+              dayNumber - 1,
+              wordsPerDay,
+              getClassifiedDayNExclusionsMap(pf.classified!, mode),
+            )
+            prevWords.forEach((w) => dayNExclSet.add(w))
           }
+          let targetRows: CloudRow[]
+          if (dayNExclSet.size) {
+            let idx = (dayNumber - 1) * wordsPerDay
+            targetRows = []
+            while (targetRows.length < wordsPerDay && idx < filtered.length) {
+              const r = filtered[idx++]
+              if (!isRowExcludedByDayN(r, dayNExclSet)) targetRows.push(r)
+            }
+          } else {
+            const start = (dayNumber - 1) * wordsPerDay
+            targetRows = filtered.slice(start, start + wordsPerDay) as CloudRow[]
+          }
+          setTotalCount(total)
+          setRows(targetRows)
         } else {
-          setTotalCount(filtered.length)
-          if (dayNumber) {
-            let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
-            const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
-            if (excludePrevDays?.includes(dayNumber)) {
-              const prevDay = dayNumber - 1
-              const prevWords = getWordsFromPreviousDay(filtered, prevDay, wordsPerDay, getClassifiedDayNExclusionsMap(pf.classified!, mode))
-              prevWords.forEach((w) => dayNExclSet.add(w))
-            }
-            let targetRows: CloudRow[]
-            if (dayNExclSet.size) {
-              let idx = (dayNumber - 1) * wordsPerDay
-              targetRows = []
-              while (targetRows.length < wordsPerDay && idx < filtered.length) {
-                const r = filtered[idx++]
-                if (!isRowExcludedByDayN(r, dayNExclSet)) targetRows.push(r)
-              }
-            } else {
-              const start = (dayNumber - 1) * wordsPerDay
-              targetRows = filtered.slice(start, start + wordsPerDay) as CloudRow[]
-            }
-            setRows(targetRows)
-          } else {
-            setRows(filtered.slice(0, 500) as CloudRow[])
-          }
+          setTotalCount(total)
+          setRows(filtered.slice(0, 500) as CloudRow[])
         }
         setLoading(false)
         return
@@ -570,11 +579,35 @@ export function CloudAllWordsScreen({
           if (e) throw e
           let cleaned = ((data ?? []) as CloudRow[]).filter((r) => !r.word?.startsWith('__deleted__'))
           cleaned = cleaned.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
-          cleaned = sortClassifiedRowsByWordOrder(cleaned, pf.classified)
+          cleaned = buildClassifiedDisplayList(cleaned, pf.classified, mode)
           setTotalCount(cleaned.length)
-          const targetRows = dayNumber
-            ? cleaned.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay)
-            : cleaned.slice(0, 500)
+          let dayNExclSet = new Set(
+            dayNumber ? getClassifiedDayNExclusions(pf.classified, dayNumber, mode) : [],
+          )
+          const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
+          if (dayNumber && excludePrevDays?.includes(dayNumber)) {
+            const prevWords = getWordsFromPreviousDay(
+              cleaned,
+              dayNumber - 1,
+              wordsPerDay,
+              getClassifiedDayNExclusionsMap(pf.classified, mode),
+            )
+            prevWords.forEach((w) => dayNExclSet.add(w))
+          }
+          let targetRows: CloudRow[]
+          if (dayNumber && dayNExclSet.size) {
+            let idx = (dayNumber - 1) * wordsPerDay
+            targetRows = []
+            while (targetRows.length < wordsPerDay && idx < cleaned.length) {
+              const r = cleaned[idx++]
+              if (!isRowExcludedByDayN(r, dayNExclSet)) targetRows.push(r)
+            }
+          } else if (dayNumber) {
+            const start = (dayNumber - 1) * wordsPerDay
+            targetRows = cleaned.slice(start, start + wordsPerDay)
+          } else {
+            targetRows = cleaned.slice(0, 500)
+          }
           setRows(targetRows)
           setLoading(false)
           return
@@ -615,65 +648,37 @@ export function CloudAllWordsScreen({
             }
           }
         }
-        if (CLASSIFIED_DEDUPLICATE_TOPICS.includes(pf.classified)) {
-          cleaned = deduplicateClassifiedRows(cleaned, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY.includes(pf.classified))
-        }
-        cleaned = sortClassifiedRowsByWordOrder(cleaned, pf.classified)
-        const day1Incl = getClassifiedDay1Inclusions(pf.classified!, mode)
-        if (day1Incl?.length) {
-          const day1Set = new Set(day1Incl)
-          const day1Excl = new Set(CLASSIFIED_DAY1_EXCLUSIONS[pf.classified] ?? [])
-          const day1Rows = cleaned.filter((r) => day1Set.has(r.word ?? ''))
-          const rest = cleaned.filter((r) => !day1Set.has(r.word ?? ''))
-          const ordered = [...day1Rows, ...rest]
-          const filteredOutExcl = day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
-          const total = filteredOutExcl.length
-          if (dayNumber) {
-            const dayNExcl = getClassifiedDayNExclusions(pf.classified!, dayNumber, mode)
-            const dayNExclSet = dayNExcl?.length ? new Set(dayNExcl) : null
-            let rows: CloudRow[]
-            if (dayNExclSet) {
-              let idx = (dayNumber - 1) * wordsPerDay
-              rows = []
-              while (rows.length < wordsPerDay && idx < filteredOutExcl.length) {
-                const r = filteredOutExcl[idx++]
-                if (!isRowExcludedByDayN(r, dayNExclSet)) rows.push(r)
-              }
-            } else {
-              const start = (dayNumber - 1) * wordsPerDay
-              rows = filteredOutExcl.slice(start, start + wordsPerDay)
-            }
-            setTotalCount(total)
-            setRows(rows)
-          } else {
-            setTotalCount(total)
-            setRows(filteredOutExcl.slice(0, 500))
+        cleaned = buildClassifiedDisplayList(cleaned, pf.classified, mode)
+        const total = cleaned.length
+        if (dayNumber) {
+          let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
+          const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
+          if (excludePrevDays?.includes(dayNumber)) {
+            const prevWords = getWordsFromPreviousDay(
+              cleaned,
+              dayNumber - 1,
+              wordsPerDay,
+              getClassifiedDayNExclusionsMap(pf.classified!, mode),
+            )
+            prevWords.forEach((w) => dayNExclSet.add(w))
           }
+          let targetRows: CloudRow[]
+          if (dayNExclSet.size) {
+            let idx = (dayNumber - 1) * wordsPerDay
+            targetRows = []
+            while (targetRows.length < wordsPerDay && idx < cleaned.length) {
+              const r = cleaned[idx++]
+              if (!isRowExcludedByDayN(r, dayNExclSet)) targetRows.push(r)
+            }
+          } else {
+            const start = (dayNumber - 1) * wordsPerDay
+            targetRows = cleaned.slice(start, start + wordsPerDay)
+          }
+          setTotalCount(total)
+          setRows(targetRows)
         } else {
-          setTotalCount(cleaned.length)
-          if (dayNumber) {
-            let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
-            const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
-            if (excludePrevDays?.includes(dayNumber)) {
-              const prevDay = dayNumber - 1
-              const prevWords = getWordsFromPreviousDay(cleaned, prevDay, wordsPerDay, getClassifiedDayNExclusionsMap(pf.classified!, mode))
-              prevWords.forEach((w) => dayNExclSet.add(w))
-            }
-            let targetRows: CloudRow[]
-            if (dayNExclSet.size) {
-              let idx = (dayNumber - 1) * wordsPerDay
-              targetRows = []
-              while (targetRows.length < wordsPerDay && idx < cleaned.length) {
-                const r = cleaned[idx++]
-                if (!isRowExcludedByDayN(r, dayNExclSet)) targetRows.push(r)
-              }
-            } else {
-              targetRows = cleaned.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay) as CloudRow[]
-            }
-            setRows(targetRows)
-          } else {
-            setRows(cleaned.slice(0, 500) as CloudRow[])
-          }
+          setTotalCount(total)
+          setRows(cleaned.slice(0, 500))
         }
         setLoading(false)
         return
@@ -924,22 +929,6 @@ export function CloudAllWordsScreen({
           }
           const displayKo = (mode === 'ko' && r.word && KO_DISPLAY_OVERRIDE_BY_WORD[r.word]) ? KO_DISPLAY_OVERRIDE_BY_WORD[r.word] : (mode === 'ko' && rawMeaning && KO_DISPLAY_OVERRIDE[rawMeaning]) ? KO_DISPLAY_OVERRIDE[rawMeaning] : rawMeaning
           let displayEn = r.meaning_en ?? null
-          if (isKoreanVerbHada && displayEn && !/^to\s+(be\s+)?/i.test(displayEn)) {
-            if (r.word && KO_VERB_EN_INFINITIVE_OVERRIDE[r.word]) {
-              displayEn = KO_VERB_EN_INFINITIVE_OVERRIDE[r.word]
-            } else {
-              const parts = displayEn.split(/[;,]/).map((s) => s.trim()).filter(Boolean)
-              const part = (parts.length > 1 ? parts[parts.length - 1] : parts[0])?.toLowerCase() ?? ''
-              if (part) {
-                if (TO_BE_ADJECTIVES.has(part)) {
-                  displayEn = `to be ${part}`
-                } else {
-                  const fromExample = getInfinitiveFromEnExample(r.example_translation_en ?? null)
-                  displayEn = fromExample ? `to ${fromExample}` : `to ${part}`
-                }
-              }
-            }
-          }
           displayEn = EN_DISPLAY_OVERRIDE[displayEn ?? ''] ?? displayEn
           if (r.word && EN_DISPLAY_OVERRIDE_BY_WORD[r.word]) displayEn = EN_DISPLAY_OVERRIDE_BY_WORD[r.word]
           if (r.example && EN_DISPLAY_OVERRIDE_BY_EXAMPLE[r.example]) displayEn = EN_DISPLAY_OVERRIDE_BY_EXAMPLE[r.example]
@@ -955,7 +944,10 @@ export function CloudAllWordsScreen({
                   {(() => {
                     const override = WORD_DISPLAY_OVERRIDE[r.word]
                     const displayWord = override?.word ?? r.word
-                    const displayPron = override?.pron ?? r.word_pronunciation
+                    const displayPron =
+                      mode === 'ko'
+                        ? koModeSwahiliPronDisplay(displayWord, r.word_pronunciation, override?.pron)
+                        : (override?.pron ?? r.word_pronunciation)
                     return (
                       <>
                         <span className="text-xl font-extrabold text-white break-words">{displayWord}</span>
@@ -1007,12 +999,32 @@ export function CloudAllWordsScreen({
                 {/* 영어 */}
                 {showEnglish ? (
                   (() => {
-                    const rawV = (mode === 'sw' ? displayEn : r.meaning_en) ?? ''
-                    const finalEn = stripKoreanFromEnDisplay(EN_DISPLAY_OVERRIDE[rawV] ?? rawV) || '—'
+                    // displayEn에 이미 EN_* 오버라이드(단어별·예문별 포함) 적용됨. 여기서 EN_DISPLAY_OVERRIDE를
+                    // 다시 쓰면 naturally → usually 같은 2차 치환이 깨짐.
+                    const finalEn = stripKoreanFromEnDisplay(displayEn ?? '') || '—'
+                    const dbEnStripped = stripKoreanFromEnDisplay(r.meaning_en ?? '')
+                    const uiFirst =
+                      finalEn !== '—' ? finalEn.split(';')[0].trim().toLowerCase() : ''
+                    const dbFirst = dbEnStripped
+                      ? dbEnStripped.split(';')[0].trim().toLowerCase()
+                      : ''
+                    const preferClientTtsForMeaningEn =
+                      hasAzureTts() &&
+                      !MUTE_MEANING_EN_AUDIO_BY_WORD.has(r.word ?? '') &&
+                      Boolean(uiFirst) &&
+                      (PREFER_CLIENT_MEANING_EN_TTS_BY_WORD.has(r.word ?? '') ||
+                        (Boolean(dbFirst) && uiFirst !== dbFirst) ||
+                        meaningEnGlossNeedsSlashTtsFix(finalEn))
                     return (
                       <div className="flex flex-col min-w-0">
                         <span className="text-base font-semibold text-white/80 break-words">{finalEn}</span>
-                        <AudioBtn url={r.meaning_en_audio_url} muted={MUTE_MEANING_EN_AUDIO_BY_WORD.has(r.word ?? '')} />
+                        <AudioBtn
+                          url={r.meaning_en_audio_url}
+                          muted={MUTE_MEANING_EN_AUDIO_BY_WORD.has(r.word ?? '')}
+                          meaningEnAzure
+                          ttsFallbackText={finalEn !== '—' ? finalEn : undefined}
+                          preferClientTtsForMeaningEn={preferClientTtsForMeaningEn}
+                        />
                       </div>
                     )
                   })()
@@ -1027,7 +1039,17 @@ export function CloudAllWordsScreen({
                       <span className="text-base font-bold text-purple-300">{EXAMPLE_DISPLAY_OVERRIDE[r.example]?.text ?? r.example}</span>
                       <AudioBtn url={r.example_audio_url} />
                     </div>
-                    <Pron value={EXAMPLE_DISPLAY_OVERRIDE[r.example]?.pron ?? r.example_pronunciation} />
+                    <Pron
+                      value={
+                        mode === 'ko'
+                          ? koModeSwahiliPronDisplay(
+                              EXAMPLE_DISPLAY_OVERRIDE[r.example]?.text ?? r.example,
+                              r.example_pronunciation,
+                              EXAMPLE_DISPLAY_OVERRIDE[r.example]?.pron,
+                            )
+                          : (EXAMPLE_DISPLAY_OVERRIDE[r.example]?.pron ?? r.example_pronunciation)
+                      }
+                    />
                   </div>
                   {/* 예문 번역: SW모드는 스와힐리어, KO모드는 한국어 */}
                   {(() => {

@@ -23,9 +23,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'vite.svg'],
       manifest: {
-        name: 'Kikorea Kiswahili Maneno',
-        short_name: 'KK Maneno',
-        description: 'Swahili & Korean Vocabulary Learning App',
+        name: 'Jifunze Kikorea kwa Kiswahili',
+        short_name: 'Jifunze KK',
+        description: 'Jifunze Kikorea kwa Kiswahili - Korean Swahili Vocabulary App',
         theme_color: '#070a12',
         background_color: '#070a12',
         display: 'standalone',
@@ -54,6 +54,11 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB 제한
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         runtimeCaching: [
+          // Storage 공개 오디오/이미지는 DB·업로드 갱신 후에도 오래 캐시되면 예전 TTS가 재생됨 → 네트워크만 사용
+          {
+            urlPattern: /^https:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\//i,
+            handler: 'NetworkOnly',
+          },
           {
             urlPattern: /^https:\/\/.*supabase\.co\/.*/i,
             handler: 'NetworkFirst',

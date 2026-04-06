@@ -95,7 +95,7 @@ const deckNameTranslations: Record<string, string> = {
   '비즈니스': 'Biashara',
   '쇼핑': 'Ununuzi',
   '위기탈출': 'Dharura',
-  '사전': 'Kamusi',
+  '사전': 'Kamusi ya Maneno',
   [STUDY_PARENT_NAME]: 'Msamiati kwa Kundi',
 }
 
@@ -248,13 +248,12 @@ export function WordbookTab({
         }
       }
 
-      // 즉시 로컬 카운트 반영 → 로딩 화면 해제
+      // 로컬 카운트 즉시 반영 (로딩 화면은 유지)
       if (!isCancelled) {
         setCloudCounts({ ...counts })
-        setIsLoadingCounts(false)
       }
 
-      // 2) Supabase 카운트는 병렬로 백그라운드 로딩
+      // 2) Supabase 카운트 병렬 로딩
       try {
         const promises: PromiseLike<void>[] = []
 
@@ -313,11 +312,13 @@ export function WordbookTab({
 
         if (!isCancelled) {
           setCloudCounts({ ...counts })
+          setIsLoadingCounts(false)
         }
       } catch (error) {
         console.error('단어 수 로딩 실패:', error)
         if (!isCancelled) {
           setCloudCounts({ ...counts })
+          setIsLoadingCounts(false)
         }
       }
     }
@@ -360,6 +361,7 @@ export function WordbookTab({
       return deckNameTranslations[name]
     }
     if (name === '모든 단어') return t('allWords', lang)
+    if (name === DICTIONARY_DECK_NAME) return lang === 'sw' ? 'Kamusi ya Maneno' : '사전 단어장'
     return name
   }
 

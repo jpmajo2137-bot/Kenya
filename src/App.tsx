@@ -367,11 +367,11 @@ function AppInner() {
             <div className="flex items-center gap-2 sm:gap-3">
               <img 
                 src="/logo.png" 
-                alt="Kikorea Kiswahili Maneno" 
+                alt="Jifunze Kikorea kwa Kiswahili" 
                 className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover"
               />
               <div className="app-title text-xl sm:text-2xl leading-tight">
-                Kikorea Kiswahili Maneno
+                Jifunze Kikorea kwa Kiswahili
               </div>
             </div>
           </div>

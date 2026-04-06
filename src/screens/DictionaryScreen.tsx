@@ -6,13 +6,13 @@ import {
   translate,
   getTranslateUsage,
   canTranslate,
-  canWatchTranslateAd,
   grantTranslateBonus,
   hasGeminiApi,
   type TranslationResult,
 } from '../lib/translate'
 import { showRewardedAd } from '../lib/admob'
 import { azureSynthesizeSpeech, hasAzureTts } from '../lib/azureTts'
+import { englishGlossLineForTts } from '../lib/meaningEnTts'
 import type { Action } from '../app/state'
 import type { Deck, VocabItem } from '../lib/types'
 
@@ -51,7 +51,7 @@ function UsageBadge({ lang }: { lang: Lang }) {
     >
       <span>🔍</span>
       <span>
-        {remaining}/{limit} {lang === 'ko' ? '남음' : 'zimebaki'}
+        {used}/{limit} {lang === 'ko' ? '사용' : 'zimetumika'}
       </span>
     </div>
   )
@@ -81,7 +81,8 @@ function TTSButton({ text, ttsLang }: { text: string; ttsLang: 'sw' | 'ko' | 'en
     if (playing) return
     setPlaying(true)
     try {
-      const buf = await azureSynthesizeSpeech(text, ttsLang)
+      const ttsText = ttsLang === 'en' ? englishGlossLineForTts(text) : text
+      const buf = await azureSynthesizeSpeech(ttsText, ttsLang)
       const blob = new Blob([buf], { type: 'audio/mpeg' })
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
@@ -114,121 +115,6 @@ function TTSButton({ text, ttsLang }: { text: string; ttsLang: 'sw' | 'ko' | 'en
       {playing ? '⏳' : '🔊'}
     </button>
   )
-}
-
-async function searchDB(word: string, fromLang: 'sw' | 'ko' | 'en'): Promise<TranslationResult | null> {
-  if (!supabase) return null
-  const trimmed = word.trim().toLowerCase()
-
-  const allModes: ('ko' | 'sw')[] = ['sw', 'ko']
-
-  // 1) word 컬럼에서 정확 매치
-  for (const mode of allModes) {
-    const { data } = await supabase
-      .from('generated_vocab')
-      .select('*')
-      .eq('mode', mode)
-      .ilike('word', trimmed)
-      .limit(1)
-    if (data?.length) return dbRowToResult(data[0], fromLang)
-  }
-
-  // 2) meaning 컬럼에서 정확 매치
-  for (const mode of allModes) {
-    const meaningCol = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'meaning_ko'
-    const { data } = await supabase
-      .from('generated_vocab')
-      .select('*')
-      .eq('mode', mode)
-      .ilike(meaningCol, trimmed)
-      .limit(1)
-    if (data?.length) return dbRowToResult(data[0], fromLang)
-  }
-
-  // 3) meaning 컬럼에서 쉼표 구분 항목 매치 (예: "애정, 사랑"에서 "사랑" 매치)
-  for (const mode of allModes) {
-    const meaningCol = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'meaning_ko'
-    const { data } = await supabase
-      .from('generated_vocab')
-      .select('*')
-      .eq('mode', mode)
-      .ilike(meaningCol, `%${trimmed}%`)
-      .limit(10)
-    if (data?.length) {
-      const itemMatch = data.find(r => {
-        const meaning = (r[meaningCol] ?? '') as string
-        return meaning.split(/[,،/]/).some(s => s.trim().toLowerCase() === trimmed)
-      })
-      if (itemMatch) return dbRowToResult(itemMatch, fromLang)
-    }
-  }
-
-  // 4) word 컬럼에서 부분 매치
-  for (const mode of allModes) {
-    const { data } = await supabase
-      .from('generated_vocab')
-      .select('*')
-      .eq('mode', mode)
-      .ilike('word', `%${trimmed}%`)
-      .limit(5)
-    if (data?.length) {
-      const exact = data.find(r => (r.word ?? '').toLowerCase() === trimmed)
-      return dbRowToResult(exact ?? data[0], fromLang)
-    }
-  }
-
-  // 5) meaning 컬럼에서 부분 매치
-  for (const mode of allModes) {
-    const meaningCol = fromLang === 'ko' ? 'meaning_ko' : fromLang === 'en' ? 'meaning_en' : 'meaning_ko'
-    const { data } = await supabase
-      .from('generated_vocab')
-      .select('*')
-      .eq('mode', mode)
-      .ilike(meaningCol, `%${trimmed}%`)
-      .limit(5)
-    if (data?.length) return dbRowToResult(data[0], fromLang)
-  }
-
-  return null
-}
-
-function dbRowToResult(r: any, fromLang: 'sw' | 'ko' | 'en'): TranslationResult {
-  const sw = r.mode === 'ko' ? r.word : r.meaning_sw ?? ''
-  const ko = r.mode === 'ko' ? (r.meaning_ko ?? '') : r.word
-  const en = r.meaning_en ?? ''
-
-  const wordMap: Record<string, string> = { sw, ko, en }
-  const word = wordMap[fromLang] || sw || ko
-
-  const meanings: TranslationResult['meanings'] = []
-  if (fromLang !== 'sw' && sw) meanings.push({ lang: 'sw', text: sw })
-  if (fromLang !== 'ko' && ko) meanings.push({ lang: 'ko', text: ko })
-  if (fromLang !== 'en' && en) meanings.push({ lang: 'en', text: en })
-
-  const examples: TranslationResult['examples'] = []
-  if (r.example) {
-    const isKoMode = r.mode === 'ko'
-    const swEx = isKoMode ? (r.example ?? '') : (r.example_translation_sw ?? '')
-    const koEx = isKoMode ? (r.example_translation_ko ?? '') : (r.example ?? '')
-    const enEx = r.example_translation_en ?? ''
-    const translation = fromLang === 'ko' ? (koEx || enEx) : fromLang === 'en' ? (enEx || koEx) : (koEx || enEx)
-    examples.push({ sentence: r.example, translation, sw: swEx, ko: koEx, en: enEx })
-  }
-
-  const posMap: Record<string, string> = {
-    'n.': 'noun', 'v.': 'verb', 'adj.': 'adjective', 'adv.': 'adverb',
-    noun: 'noun', verb: 'verb', adjective: 'adjective', adverb: 'adverb', phrase: 'phrase',
-  }
-
-  return {
-    word,
-    from: fromLang,
-    pos: posMap[r.pos ?? ''] ?? r.pos ?? '',
-    meanings,
-    examples,
-    synonyms: [],
-    note: '',
-  }
 }
 
 const DICTIONARY_DECK_NAME = '사전'
@@ -525,15 +411,6 @@ export function DictionaryScreen({
   }
 
   const handleWatchAd = async () => {
-    if (!canWatchTranslateAd()) {
-      setError(
-        lang === 'ko'
-          ? '오늘 광고 시청 가능 횟수를 모두 사용했습니다.'
-          : 'Umetumia fursa zote za kutazama matangazo leo.',
-      )
-      return
-    }
-
     const success = await showRewardedAd()
     if (success) {
       grantTranslateBonus()
@@ -621,20 +498,12 @@ export function DictionaryScreen({
           </p>
           <p className="text-xs text-white/50">
             {lang === 'ko'
-              ? '광고를 시청하면 10회 추가 번역이 가능합니다'
-              : 'Tazama tangazo kupata tafsiri 10 zaidi'}
+              ? '광고를 시청하면 사용량이 0/5로 초기화됩니다'
+              : 'Tazama tangazo ili kurudisha matumizi kuwa 0/5'}
           </p>
-          {canWatchTranslateAd() ? (
-            <Button onClick={handleWatchAd} variant="success" className="w-full">
-              {lang === 'ko' ? '🎬 광고 보고 10회 충전' : '🎬 Tazama na upate 10 zaidi'}
-            </Button>
-          ) : (
-            <p className="text-xs text-white/40">
-              {lang === 'ko'
-                ? '오늘 광고 시청 가능 횟수를 모두 사용했습니다. 내일 다시 이용하세요!'
-                : 'Umetumia fursa zote za leo. Rudi kesho!'}
-            </p>
-          )}
+          <Button onClick={handleWatchAd} variant="success" className="w-full">
+            {lang === 'ko' ? '🎬 광고 보고 초기화' : '🎬 Tazama na urudishe'}
+          </Button>
           {!isCapacitorNative() && (
             <button
               className="text-xs text-white/30 underline"
@@ -642,9 +511,10 @@ export function DictionaryScreen({
                 grantTranslateBonus()
                 setShowAdPrompt(false)
                 setRefresh((n) => n + 1)
+                if (query.trim()) doSearch()
               }}
             >
-              {lang === 'ko' ? '(웹 테스트: 무료 충전)' : '(Web test: free charge)'}
+              {lang === 'ko' ? '(웹 테스트: 무료 초기화)' : '(Web test: rudisha bure)'}
             </button>
           )}
         </div>

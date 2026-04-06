@@ -14,13 +14,16 @@ import {
 import {
   applyKoOverride,
   applySwOverride,
+  applyEnOverride,
   WORD_DISPLAY_OVERRIDE,
   EXAMPLE_DISPLAY_OVERRIDE,
   EXAMPLE_TRANSLATION_KO_OVERRIDE,
   EXAMPLE_TRANSLATION_EN_OVERRIDE,
   EXAMPLE_TRANSLATION_OVERRIDE_BY_WORD,
 } from '../lib/displayOverrides'
-import { parseLevelFilter, buildTopicOrCondition, matchesTopicFilter, getClassifiedWordIds, isWordInClassifiedTopic, getOrderedWordIds, ORDERED_WORD_EXCLUSIONS, CLASSIFIED_WORD_EXCLUSIONS, getClassifiedInclusions, CLASSIFIED_EXTRA_WORDS, getClassifiedDay1Inclusions, CLASSIFIED_DAY1_EXCLUSIONS, getClassifiedDayNExclusions, getClassifiedDayNExclusionsMap, CLASSIFIED_DAYN_EXCLUDE_PREV_DAY, CLASSIFIED_DEDUPLICATE_TOPICS, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY, getWordsFromPreviousDay, deduplicateClassifiedRows, isRowExcludedByDayN, GLOBAL_WORD_EXCLUSIONS, CATEGORY_WORD_EXCLUSIONS, sortClassifiedRowsByWordOrder, getAllWordsNumberTailIds } from '../lib/filterUtils'
+import { stripKoreanFromEnDisplay } from '../lib/meaningEnTts'
+import { koModeSwahiliPronDisplay } from '../lib/swahiliPronDisplay'
+import { parseLevelFilter, buildTopicOrCondition, matchesTopicFilter, getClassifiedWordIds, isWordInClassifiedTopic, getOrderedWordIds, ORDERED_WORD_EXCLUSIONS, CLASSIFIED_WORD_EXCLUSIONS, getClassifiedInclusions, CLASSIFIED_EXTRA_WORDS, getClassifiedDayNExclusions, getClassifiedDayNExclusionsMap, CLASSIFIED_DAYN_EXCLUDE_PREV_DAY, getWordsFromPreviousDay, isRowExcludedByDayN, GLOBAL_WORD_EXCLUSIONS, CATEGORY_WORD_EXCLUSIONS, buildClassifiedDisplayList, getAllWordsNumberTailIds } from '../lib/filterUtils'
 
 type Mode = 'sw' | 'ko'
 
@@ -382,10 +385,34 @@ export function FlashcardScreen({
               .order('created_at', { ascending: true })
             let filtered = ((data ?? []) as CloudRow[]).filter((r) => !r.word?.startsWith('__deleted__'))
             filtered = filtered.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
-            filtered = sortClassifiedRowsByWordOrder(filtered, pf.classified)
-            const targetWords = dayNumber
-              ? filtered.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay)
-              : filtered.slice(0, wordsPerDay)
+            filtered = buildClassifiedDisplayList(filtered, pf.classified, mode)
+            let dayNExclSet = new Set(
+              dayNumber ? getClassifiedDayNExclusions(pf.classified, dayNumber, mode) : [],
+            )
+            const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
+            if (dayNumber && excludePrevDays?.includes(dayNumber)) {
+              const prevWords = getWordsFromPreviousDay(
+                filtered,
+                dayNumber - 1,
+                wordsPerDay,
+                getClassifiedDayNExclusionsMap(pf.classified, mode),
+              )
+              prevWords.forEach((w) => dayNExclSet.add(w))
+            }
+            let targetWords: CloudRow[]
+            if (dayNumber && dayNExclSet.size) {
+              let idx = (dayNumber - 1) * wordsPerDay
+              targetWords = []
+              while (targetWords.length < wordsPerDay && idx < filtered.length) {
+                const r = filtered[idx++]
+                if (!isRowExcludedByDayN(r, dayNExclSet)) targetWords.push(r)
+              }
+            } else if (dayNumber) {
+              const start = (dayNumber - 1) * wordsPerDay
+              targetWords = filtered.slice(start, start + wordsPerDay)
+            } else {
+              targetWords = filtered.slice(0, wordsPerDay)
+            }
             setWords(targetWords)
           } else {
             const ids = getClassifiedWordIds(pf.classified, mode)
@@ -423,56 +450,33 @@ export function FlashcardScreen({
                 }
               }
             }
-            if (CLASSIFIED_DEDUPLICATE_TOPICS.includes(pf.classified)) {
-              filtered = deduplicateClassifiedRows(filtered, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY.includes(pf.classified))
-            }
-            filtered = sortClassifiedRowsByWordOrder(filtered, pf.classified)
-            const day1Incl = getClassifiedDay1Inclusions(pf.classified!, mode)
+            filtered = buildClassifiedDisplayList(filtered, pf.classified, mode)
             let targetWords: CloudRow[]
-            if (day1Incl?.length) {
-              const day1Set = new Set(day1Incl)
-              const day1Excl = new Set(CLASSIFIED_DAY1_EXCLUSIONS[pf.classified] ?? [])
-              const day1Rows = filtered.filter((r) => day1Set.has(r.word ?? ''))
-              const rest = filtered.filter((r) => !day1Set.has(r.word ?? ''))
-              const ordered = [...day1Rows, ...rest]
-              const filteredOutExcl = day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
-              if (dayNumber) {
-                const dayNExcl = getClassifiedDayNExclusions(pf.classified!, dayNumber, mode)
-                const dayNExclSet = dayNExcl?.length ? new Set(dayNExcl) : null
-                if (dayNExclSet) {
-                  let idx = (dayNumber - 1) * wordsPerDay
-                  targetWords = []
-                  while (targetWords.length < wordsPerDay && idx < filteredOutExcl.length) {
-                    const r = filteredOutExcl[idx++]
-                    if (!isRowExcludedByDayN(r, dayNExclSet)) targetWords.push(r)
-                  }
-                } else {
-                  targetWords = filteredOutExcl.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay)
+            if (dayNumber) {
+              let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
+              const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
+              if (excludePrevDays?.includes(dayNumber)) {
+                const prevWords = getWordsFromPreviousDay(
+                  filtered,
+                  dayNumber - 1,
+                  wordsPerDay,
+                  getClassifiedDayNExclusionsMap(pf.classified!, mode),
+                )
+                prevWords.forEach((w) => dayNExclSet.add(w))
+              }
+              if (dayNExclSet.size) {
+                let idx = (dayNumber - 1) * wordsPerDay
+                targetWords = []
+                while (targetWords.length < wordsPerDay && idx < filtered.length) {
+                  const r = filtered[idx++]
+                  if (!isRowExcludedByDayN(r, dayNExclSet)) targetWords.push(r)
                 }
               } else {
-                targetWords = filteredOutExcl.slice(0, wordsPerDay)
+                const start = (dayNumber - 1) * wordsPerDay
+                targetWords = filtered.slice(start, start + wordsPerDay)
               }
             } else {
-              if (dayNumber) {
-                let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
-                const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
-                if (excludePrevDays?.includes(dayNumber)) {
-                  const prevWords = getWordsFromPreviousDay(filtered, dayNumber - 1, wordsPerDay, getClassifiedDayNExclusionsMap(pf.classified!, mode))
-                  prevWords.forEach((w) => dayNExclSet.add(w))
-                }
-                if (dayNExclSet.size) {
-                  let idx = (dayNumber - 1) * wordsPerDay
-                  targetWords = []
-                  while (targetWords.length < wordsPerDay && idx < filtered.length) {
-                    const r = filtered[idx++]
-                    if (!isRowExcludedByDayN(r, dayNExclSet)) targetWords.push(r)
-                  }
-                } else {
-                  targetWords = filtered.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay)
-                }
-              } else {
-                targetWords = filtered.slice(0, wordsPerDay)
-              }
+              targetWords = filtered.slice(0, wordsPerDay)
             }
             setWords(targetWords)
           }
@@ -514,56 +518,35 @@ export function FlashcardScreen({
             ) as CloudRow[]
             filtered = [...filtered, ...extras]
           }
-          if (CLASSIFIED_DEDUPLICATE_TOPICS.includes(pf.classified)) {
-            filtered = deduplicateClassifiedRows(filtered, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY.includes(pf.classified))
-          }
-          filtered = sortClassifiedRowsByWordOrder(filtered, pf.classified)
-          const day1Incl = getClassifiedDay1Inclusions(pf.classified!, mode)
-          if (day1Incl?.length) {
-            const day1Set = new Set(day1Incl)
-            const day1Excl = new Set(CLASSIFIED_DAY1_EXCLUSIONS[pf.classified] ?? [])
-            const day1Rows = filtered.filter((r) => day1Set.has(r.word ?? ''))
-            const rest = filtered.filter((r) => !day1Set.has(r.word ?? ''))
-            const ordered = [...day1Rows, ...rest]
-            const filteredOutExcl = day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
-            if (dayNumber) {
-              const dayNExcl = getClassifiedDayNExclusions(pf.classified!, dayNumber, mode)
-              const dayNExclSet = dayNExcl?.length ? new Set(dayNExcl) : null
-              if (dayNExclSet) {
-                let idx = (dayNumber - 1) * wordsPerDay
-                filtered = []
-                while (filtered.length < wordsPerDay && idx < filteredOutExcl.length) {
-                  const r = filteredOutExcl[idx++]
-                  if (!isRowExcludedByDayN(r, dayNExclSet)) filtered.push(r)
-                }
-              } else {
-                filtered = filteredOutExcl.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay)
-              }
-            } else {
-              filtered = filteredOutExcl.slice(0, wordsPerDay)
-            }
-          } else if (dayNumber) {
+          filtered = buildClassifiedDisplayList(filtered, pf.classified!, mode)
+          let targetWords: CloudRow[]
+          if (dayNumber) {
             let dayNExclSet = new Set(getClassifiedDayNExclusions(pf.classified!, dayNumber, mode))
             const excludePrevDays = CLASSIFIED_DAYN_EXCLUDE_PREV_DAY[pf.classified]
             if (excludePrevDays?.includes(dayNumber)) {
-              const prevWords = getWordsFromPreviousDay(filtered, dayNumber - 1, wordsPerDay, getClassifiedDayNExclusionsMap(pf.classified!, mode))
+              const prevWords = getWordsFromPreviousDay(
+                filtered,
+                dayNumber - 1,
+                wordsPerDay,
+                getClassifiedDayNExclusionsMap(pf.classified!, mode),
+              )
               prevWords.forEach((w) => dayNExclSet.add(w))
             }
             if (dayNExclSet.size) {
               let idx = (dayNumber - 1) * wordsPerDay
-              const targetWords: CloudRow[] = []
+              targetWords = []
               while (targetWords.length < wordsPerDay && idx < filtered.length) {
                 const r = filtered[idx++]
                 if (!isRowExcludedByDayN(r, dayNExclSet)) targetWords.push(r)
               }
-              filtered = targetWords
             } else {
-              filtered = filtered.slice((dayNumber - 1) * wordsPerDay, (dayNumber - 1) * wordsPerDay + wordsPerDay)
+              const start = (dayNumber - 1) * wordsPerDay
+              targetWords = filtered.slice(start, start + wordsPerDay)
             }
           } else {
-            filtered = filtered.slice(0, wordsPerDay)
+            targetWords = filtered.slice(0, wordsPerDay)
           }
-          setWords(filtered)
+          setWords(targetWords)
         }
         setLoading(false)
         return
@@ -1027,7 +1010,10 @@ export function FlashcardScreen({
 
   const wordOverrideEntry = WORD_DISPLAY_OVERRIDE[currentWord.word]
   const displayWord = wordOverrideEntry?.word ?? currentWord.word
-  const displayWordPron = wordOverrideEntry?.pron ?? currentWord.word_pronunciation
+  const displayWordPron =
+    mode === 'ko'
+      ? koModeSwahiliPronDisplay(displayWord, currentWord.word_pronunciation, wordOverrideEntry?.pron)
+      : (wordOverrideEntry?.pron ?? currentWord.word_pronunciation)
 
   const rawMeaning = mode === 'sw' 
     ? (currentWord.meaning_sw || currentWord.meaning_en || '') 
@@ -1039,7 +1025,14 @@ export function FlashcardScreen({
   
   const exOverride = currentWord.example ? EXAMPLE_DISPLAY_OVERRIDE[currentWord.example] : undefined
   const displayExample = exOverride?.text ?? currentWord.example
-  const displayExamplePron = exOverride?.pron ?? currentWord.example_pronunciation
+  const displayExamplePron =
+    mode === 'ko'
+      ? koModeSwahiliPronDisplay(
+          displayExample,
+          currentWord.example_pronunciation,
+          exOverride?.pron,
+        )
+      : (exOverride?.pron ?? currentWord.example_pronunciation)
 
   const wordOverride = currentWord.word ? EXAMPLE_TRANSLATION_OVERRIDE_BY_WORD[currentWord.word] : undefined
   const rawExTranslation = mode === 'sw'
@@ -1107,7 +1100,10 @@ export function FlashcardScreen({
                 url={currentWord.image_url}
                 alt={currentWord.word}
                 wikiSearchTerms={wikiSearchTitlesFromMeaningEn(
-                  currentWord.meaning_en,
+                  (() => {
+                    const en = applyEnOverride(currentWord.meaning_en, currentWord.word) ?? currentWord.meaning_en
+                    return stripKoreanFromEnDisplay(en ?? '') || en
+                  })(),
                   currentWord.word,
                 )}
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl object-cover mb-4 sm:mb-6"
