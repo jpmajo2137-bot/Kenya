@@ -11,7 +11,7 @@ import {
   type TranslationResult,
 } from '../lib/translate'
 import { showRewardedAd } from '../lib/admob'
-import { azureSynthesizeSpeech, hasAzureTts } from '../lib/azureTts'
+import { hasCachedTts, speakWithFreeFallback } from '../lib/ttsCache'
 import { englishGlossLineForTts } from '../lib/meaningEnTts'
 import type { Action } from '../app/state'
 import type { Deck, VocabItem } from '../lib/types'
@@ -75,26 +75,15 @@ function DetectedLangBadge({ text, lang }: { text: string; lang: Lang }) {
 function TTSButton({ text, ttsLang }: { text: string; ttsLang: 'sw' | 'ko' | 'en' }) {
   const [playing, setPlaying] = useState(false)
 
-  if (!hasAzureTts() || !text) return null
+  if (!hasCachedTts() || !text) return null
 
   const handlePlay = async () => {
     if (playing) return
     setPlaying(true)
     try {
       const ttsText = ttsLang === 'en' ? englishGlossLineForTts(text) : text
-      const buf = await azureSynthesizeSpeech(ttsText, ttsLang)
-      const blob = new Blob([buf], { type: 'audio/mpeg' })
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audio.onended = () => {
-        setPlaying(false)
-        URL.revokeObjectURL(url)
-      }
-      audio.onerror = () => {
-        setPlaying(false)
-        URL.revokeObjectURL(url)
-      }
-      await audio.play()
+      await speakWithFreeFallback(ttsText, ttsLang)
+      window.setTimeout(() => setPlaying(false), Math.max(1500, ttsText.length * 90))
     } catch {
       setPlaying(false)
     }
@@ -395,11 +384,24 @@ export function DictionaryScreen({
       if (err.message === 'LIMIT_REACHED') {
         setShowAdPrompt(true)
       } else {
-        setError(
-          lang === 'ko'
-            ? `번역 실패: ${err.message}`
-            : `Tafsiri imeshindwa: ${err.message}`,
-        )
+        const msg = String(err?.message ?? '')
+        const isOverloaded =
+          err?.status === 503 ||
+          err?.status === 429 ||
+          /503|UNAVAILABLE|overloaded|high demand|429/i.test(msg)
+        if (isOverloaded) {
+          setError(
+            lang === 'ko'
+              ? '번역 서버가 일시적으로 혼잡합니다. 잠시 후 다시 시도해 주세요.'
+              : 'Seva ya tafsiri ina msongamano kwa muda. Tafadhali jaribu tena baadaye.',
+          )
+        } else {
+          setError(
+            lang === 'ko'
+              ? `번역 실패: ${msg}`
+              : `Tafsiri imeshindwa: ${msg}`,
+          )
+        }
       }
     } finally {
       setLoading(false)

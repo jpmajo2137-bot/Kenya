@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 dotenv.config()
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY!
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY!
 const AZURE_TTS_KEY = process.env.AZURE_SPEECH_KEY || process.env.VITE_AZURE_TTS_KEY!
 const AZURE_TTS_REGION = process.env.AZURE_SPEECH_REGION || process.env.VITE_AZURE_TTS_REGION || 'koreacentral'
 
@@ -331,7 +331,7 @@ const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   'management; the act of running/organizing a business or team': 'management',
   'to exploit': 'to make good use', 'asleep; not aware': 'to doze off, to be drowsy',
   'provincial; person from the provinces': 'from the provinces',
-  outstanding: 'unresolved', bridge: 'bridge of the nose',
+  outstanding: 'unresolved', bridge: 'bridge',
   contract: 'to be infected, to catch', venture: 'dare', float: 'buoy',
   buck: 'male rabbit', male: 'male rabbit', pack: 'package',
   'to be late': 'late', cut: 'crop', cute: 'to be cute',
@@ -530,7 +530,7 @@ async function processEnMeaningAudio() {
 
           const { error: upErr } = await supabase
             .from('generated_vocab')
-            .update({ meaning_en_audio_url: newUrl })
+            .update({ meaning_en: displayText, meaning_en_audio_url: newUrl })
             .eq('id', row.id)
 
           if (upErr) { console.error(`  DB 업데이트 실패: ${upErr.message}`); failed++ }
@@ -642,10 +642,13 @@ async function main() {
   if (!AZURE_TTS_KEY) { console.error('VITE_AZURE_TTS_KEY 환경변수가 없습니다.'); process.exit(1) }
   if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('Supabase 환경변수가 없습니다.'); process.exit(1) }
 
-  await processWordAudio()
-  await processEnMeaningAudio()
-  await processExampleAudio()
-  await processExampleAudioByWord()
+  const scope = process.env.OVERRIDE_TTS_SCOPE || 'all'
+  if (scope === 'all' || scope === 'word') await processWordAudio()
+  if (scope === 'all' || scope === 'en') await processEnMeaningAudio()
+  if (scope === 'all' || scope === 'example') {
+    await processExampleAudio()
+    await processExampleAudioByWord()
+  }
 
   console.log('\n=== 모든 처리 완료 ===')
 }

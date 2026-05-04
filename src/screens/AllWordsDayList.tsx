@@ -88,35 +88,59 @@ export function AllWordsDayList({
     }
   }, [])
 
+  // 화면 전환 시 맨 위로 스크롤 (상태 변경 후 렌더 완료 시점에 실행)
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
+  }, [selectedDay, flashcardDay, userFlashcardMode, dictSelectedDay, dictFlashcardDay, dictAllFlashcard])
+
+  // 화면 전환 시 상단으로 스크롤 (렌더 직후 적용)
+  const scrollToTop = () => {
+    // 두 번 호출: 즉시 + 렌더 후 (일부 모바일 브라우저에서 확실히 적용되도록)
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      document.documentElement.scrollTop = 0
+      document.body.scrollTop = 0
+    })
+  }
+
   // 상태 변경 시 history 추가하는 wrapper 함수들
   const selectDay = (day: number) => {
     window.history.pushState({ screen: 'wordList', day }, '')
     setSelectedDayState(day)
+    scrollToTop()
   }
 
   const startFlashcard = (day: number) => {
     window.history.pushState({ screen: 'flashcard', day }, '')
     setFlashcardDayState(day)
+    scrollToTop()
   }
 
   const startUserFlashcard = () => {
     window.history.pushState({ screen: 'userFlashcard' }, '')
     setUserFlashcardMode(true)
+    scrollToTop()
   }
 
   const selectDictDay = (day: number) => {
     window.history.pushState({ screen: 'dictWordList', day }, '')
     setDictSelectedDay(day)
+    scrollToTop()
   }
 
   const startDictFlashcard = (day: number) => {
     window.history.pushState({ screen: 'dictFlashcard', day }, '')
     setDictFlashcardDay(day)
+    scrollToTop()
   }
 
   const startDictAllFlashcard = () => {
     window.history.pushState({ screen: 'dictAllFlashcard' }, '')
     setDictAllFlashcard(true)
+    scrollToTop()
   }
 
   const closeFlashcard = useCallback(() => {

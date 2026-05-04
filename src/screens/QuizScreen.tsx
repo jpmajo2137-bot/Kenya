@@ -7,7 +7,7 @@ import { t, type Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import { getWrongAnswerIds, addToWrongAnswers, removeFromWrongAnswers, WRONG_ANSWERS_UPDATED_EVENT } from './FlashcardScreen'
 import { getVocabByIds, getVocabFromCache, isOnline, onOnlineStatusChange, type CachedVocab } from '../lib/offlineCache'
-import { canAccessQuiz, showRewardedAd, getQuizAccessRemainingTime } from '../lib/admob'
+import { canAccessQuiz, showRewardedAd, getQuizAccessRemainingTime, hideBannerAd, resumeBannerAd, maybeShowInterstitialAtBreakpoint, setLearningSessionActive } from '../lib/admob'
 import { applyKoOverride, applyEnOverride, applySwOverride, WORD_DISPLAY_OVERRIDE } from '../lib/displayOverrides'
 import { GLOBAL_WORD_EXCLUSIONS } from '../lib/filterUtils'
 
@@ -263,6 +263,35 @@ export function QuizScreen({
     const interval = setInterval(updateRemaining, 60000)
     return () => clearInterval(interval)
   }, [])
+
+  // 퀴즈 풀이 중에는 배너 숨김 + 학습 세션 활성 (전면 광고 인터럽트 보호)
+  // setup/result에서는 배너 복귀 + 학습 세션 비활성 (자연스러운 노출 기회 회복)
+  useEffect(() => {
+    if (phase === 'play') {
+      hideBannerAd('quiz-play').catch(() => {})
+      setLearningSessionActive(true, 'quiz-play')
+    } else {
+      resumeBannerAd('quiz-play').catch(() => {})
+      setLearningSessionActive(false, 'quiz-play')
+    }
+  }, [phase])
+
+  // 언마운트 시 안전 cleanup (사유가 남지 않도록)
+  useEffect(() => {
+    return () => {
+      resumeBannerAd('quiz-play').catch(() => {})
+      setLearningSessionActive(false, 'quiz-play')
+    }
+  }, [])
+
+  // 퀴즈 결과 화면 진입 → 자연스러운 휴식 시점 → 전면 광고 시도
+  useEffect(() => {
+    if (phase !== 'result') return
+    const t = setTimeout(() => {
+      maybeShowInterstitialAtBreakpoint()
+    }, 700)
+    return () => clearTimeout(t)
+  }, [phase])
 
   // 뒤로가기로 setup으로 돌아가는 wrapper (popstate에서 직접 처리)
   // const goToSetup = () => setPhaseState('setup')

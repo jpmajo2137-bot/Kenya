@@ -15,6 +15,7 @@ import {
 import { AllWordsDayList } from './AllWordsDayList'
 import { WordbookScreen } from './WordbookScreen'
 import { DictionaryDayList } from './DictionaryDayList'
+import { maybeShowInterstitialAd } from '../lib/admob'
 import { getClassifiedDisplayCount, getOrderedCount, CATEGORY_WORD_EXCLUSIONS, POS_WORD_EXCLUSIONS, CATEGORY_MAX_DAYS, GLOBAL_WORD_EXCLUSIONS } from '../lib/filterUtils'
 
 const WORDS_PER_DAY = 40
@@ -682,6 +683,32 @@ export function WordbookTab({
                 </button>
               )
             })}
+
+          {/* 한글 글자 공부 (입문 위) - 스와힐리어 사용자 전용 */}
+          {lang === 'sw' && (
+            <button
+              onClick={() => {
+                dispatch({ type: 'settings', patch: { topTab: 'hangeul' } })
+                maybeShowInterstitialAd()
+              }}
+              className="flex items-center justify-between rounded-2xl px-4 py-4 sm:px-5 sm:py-5 text-left transition hover:bg-white/8 active:scale-[0.99] app-card backdrop-blur border border-purple-400/30 bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 touch-target"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl sm:text-2xl">🔤</span>
+                  <span className="text-xl sm:text-2xl font-extrabold text-white truncate">
+                    Jifunze Hangeul
+                  </span>
+                </div>
+                <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2">
+                  <span className="app-chip">Konsonanti & Irabu</span>
+                </div>
+              </div>
+              <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl border border-purple-400/30 bg-purple-500/20 text-white/80 shrink-0 ml-2">
+                ▶
+              </div>
+            </button>
+          )}
 
           {/* 난이도별 상위 단어장 (입문/초급/중급/고급) */}
           {LEVEL_INFO.map((lv) => {

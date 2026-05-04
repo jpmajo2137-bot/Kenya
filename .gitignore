@@ -11,6 +11,8 @@ fix-word-output.txt
 .env.local
 .env.*.local
 *.env
+.env.bak-*
+.env.full-backup-*
 
 # API Keys & Credentials (중요!)
 gcp-tts-key.json
@@ -18,6 +20,14 @@ gcp-tts-key.json
 *.jks
 keystore/
 google-services.json
+
+# 안드로이드 서명 비밀번호 (keystore.properties)
+android/keystore.properties
+keystore.properties
+!android/keystore.properties.example
+
+# 인증서 PEM (Play Console 업로드 키 재설정용)
+*.pem
 
 # Logs
 logs/

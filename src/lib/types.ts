@@ -57,7 +57,7 @@ export type AppSettings = {
   meaningLang: 'sw' | 'ko'
 
   /** 상단 탭 */
-  topTab: 'home' | 'settings'
+  topTab: 'home' | 'hangeul' | 'settings'
   /** 하단 탭 */
   bottomTab: 'wordbook' | 'quiz' | 'wrong' | 'dictionary'
 

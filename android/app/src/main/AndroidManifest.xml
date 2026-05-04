@@ -16,7 +16,12 @@
         android:theme="@style/AppTheme"
         android:networkSecurityConfig="@xml/network_security_config"
         android:usesCleartextTraffic="false"
-        tools:targetApi="31">
+        android:allowClearUserData="true"
+        android:allowNativeHeapPointerTagging="true"
+        android:hardwareAccelerated="true"
+        android:requestLegacyExternalStorage="false"
+        android:preserveLegacyExternalStorage="false"
+        tools:targetApi="33">
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
@@ -57,12 +62,28 @@
     <!-- AdMob 광고 ID (Android 13+) -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     
-    <!-- 명시적으로 불필요한 권한 제거 -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
-    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <!--
+        과거 방어적으로 차단했던 권한들 (READ/WRITE_EXTERNAL_STORAGE, CAMERA, RECORD_AUDIO,
+        ACCESS_FINE/COARSE_LOCATION, READ_PHONE_STATE, READ/WRITE_CONTACTS, GET_ACCOUNTS,
+        QUERY_ALL_PACKAGES, SYSTEM_ALERT_WINDOW, REQUEST_INSTALL_PACKAGES, PACKAGE_USAGE_STATS).
+        현재 의존성(Capacitor + AdMob + Firebase Analytics + AppUpdate)은 어느 것도 추가하지 않으므로
+        tools:node="remove" 항목을 두면 매니페스트 머저가 "no other declaration present" 경고를 낸다.
+        새 라이브러리를 추가해 위 권한이 머지된 final manifest 에 다시 들어오면 그때 명시적으로 차단할 것.
+    -->
+
+    <!-- Play Store 외부 앱 조회 제한 (Android 11+) -->
+    <queries>
+        <!-- AdMob 광고 표시에 필요 -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- HTTPS 링크 열기 (앱 업데이트 등) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
 </manifest>

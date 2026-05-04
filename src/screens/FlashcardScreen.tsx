@@ -4,6 +4,7 @@ import { VocabImage } from '../components/VocabImage'
 import { wikiSearchTitlesFromMeaningEn } from '../lib/wikiThumbnail'
 import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import { hideBannerAd, resumeBannerAd, maybeShowInterstitialAtBreakpoint, setLearningSessionActive } from '../lib/admob'
 import { 
   getMediaFromCache, 
   isOnline,
@@ -240,12 +241,53 @@ export function FlashcardScreen({
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null) // 카드 넘김 애니메이션
   const [isAnimating, setIsAnimating] = useState(false)
   const [online, setOnline] = useState(isOnline())
+  // 이전 카드로 돌아갈 때 되돌리기 위해 마지막 액션을 기록
+  const lastActionRef = useRef<{
+    index: number
+    type: 'known' | 'unknown' | 'mastered' | 'skip'
+    wordId: string
+  } | null>(null)
+  // 스와이프 제스처 감지용
+  const touchStartXRef = useRef<number | null>(null)
+  const touchStartYRef = useRef<number | null>(null)
+  const swipedRef = useRef(false)
 
   // 온라인 상태 감지
   useEffect(() => {
     const unsubscribe = onOnlineStatusChange(setOnline)
     return unsubscribe
   }, [])
+
+  // 플래시카드 화면 상태별 배너 + 학습 세션 가드
+  // - 카드 학습 중(isComplete=false): 배너 숨김 + 학습 세션 활성 (전면 광고 인터럽트 보호)
+  // - 결과 화면(isComplete=true): 배너 복귀 + 학습 세션 비활성 (자연스러운 노출 기회 회복)
+  useEffect(() => {
+    if (isComplete) {
+      setLearningSessionActive(false, 'flashcard')
+      resumeBannerAd('flashcard').catch(() => {})
+    } else {
+      setLearningSessionActive(true, 'flashcard')
+      hideBannerAd('flashcard').catch(() => {})
+    }
+  }, [isComplete])
+
+  // 언마운트 시 안전 cleanup (사유가 남지 않도록)
+  useEffect(() => {
+    return () => {
+      setLearningSessionActive(false, 'flashcard')
+      resumeBannerAd('flashcard').catch(() => {})
+    }
+  }, [])
+
+  // 학습 세션 완료 시(결과 화면 진입) 자연스러운 휴식 시점 → 전면 광고 시도
+  useEffect(() => {
+    if (!isComplete) return
+    // 약간의 딜레이로 결과 UI가 그려진 직후 노출 (사용자가 결과를 인지할 시간 확보)
+    const t = setTimeout(() => {
+      maybeShowInterstitialAtBreakpoint()
+    }, 600)
+    return () => clearTimeout(t)
+  }, [isComplete])
 
   // 뒤로가기는 부모 컴포넌트(AllWordsDayList)에서 처리
 
@@ -757,37 +799,118 @@ export function FlashcardScreen({
     }, 300)
   }, [words.length, isAnimating])
 
+  // 이전 카드로 돌아가기 (마지막 액션을 되돌림)
+  const goToPrevious = useCallback(() => {
+    if (isAnimating || currentIndex === 0) return
+    setIsAnimating(true)
+    setSlideDirection('right')
+
+    setTimeout(() => {
+      const prevIndex = currentIndex - 1
+      const last = lastActionRef.current
+      if (last && last.index === prevIndex) {
+        if (last.type === 'known' || last.type === 'mastered') {
+          setKnownCount((c) => Math.max(0, c - 1))
+        } else if (last.type === 'unknown') {
+          setUnknownCount((c) => Math.max(0, c - 1))
+          setWrongWords((prev) => prev.filter((w) => w.id !== last.wordId))
+        } else if (last.type === 'skip') {
+          setUnknownCount((c) => Math.max(0, c - 1))
+        }
+        lastActionRef.current = null
+      }
+      setIsFlipped(false)
+      setCurrentIndex(prevIndex)
+      setSlideDirection(null)
+      setIsAnimating(false)
+    }, 300)
+  }, [isAnimating, currentIndex])
+
+  // 스와이프 제스처: 왼쪽→오른쪽 = 이전 카드 (알아요/몰라요에는 해당 안 됨)
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX
+    touchStartYRef.current = e.touches[0].clientY
+    swipedRef.current = false
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return
+    const dx = e.touches[0].clientX - touchStartXRef.current
+    const dy = e.touches[0].clientY - touchStartYRef.current
+    // 가로 이동이 세로 이동보다 크고 일정 거리 이상 움직였으면 스와이프로 간주
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      swipedRef.current = true
+    }
+  }, [])
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const startX = touchStartXRef.current
+    const startY = touchStartYRef.current
+    touchStartXRef.current = null
+    touchStartYRef.current = null
+    if (startX === null || startY === null) return
+    const endX = e.changedTouches[0].clientX
+    const endY = e.changedTouches[0].clientY
+    const dx = endX - startX
+    const dy = endY - startY
+    // 수직 이동이 더 크면 스와이프로 처리하지 않음
+    if (Math.abs(dy) > Math.abs(dx)) return
+    const SWIPE_THRESHOLD = 50
+    if (dx > SWIPE_THRESHOLD) {
+      // 왼쪽에서 오른쪽으로 스와이프 → 이전 카드로 이동
+      goToPrevious()
+    }
+  }, [goToPrevious])
+
+  // 카드 클릭(뒤집기) — 스와이프 중이었다면 뒤집기를 차단
+  const handleCardClick = useCallback(() => {
+    if (isAnimating) return
+    if (swipedRef.current) {
+      swipedRef.current = false
+      return
+    }
+    handleFlip()
+  }, [handleFlip, isAnimating])
+
   const handleKnown = useCallback(() => {
+    if (currentWord) {
+      lastActionRef.current = { index: currentIndex, type: 'known', wordId: currentWord.id }
+    }
     setKnownCount((c) => c + 1)
     // 알아요 선택해도 오답노트에서 자동 제거하지 않음
     // 오답노트 플래시카드에서 "외웠어요" 버튼으로만 제거 가능
     goToNext('left')
-  }, [goToNext])
+  }, [goToNext, currentIndex, currentWord])
 
   const handleUnknown = useCallback(() => {
     setUnknownCount((c) => c + 1)
     // 몰라요 선택 시 오답노트에 추가 (언어별)
     if (currentWord) {
+      lastActionRef.current = { index: currentIndex, type: 'unknown', wordId: currentWord.id }
       addToWrongAnswers(currentWord.id, mode)
       setWrongWords((prev) => [...prev, currentWord])
     }
     goToNext('left')
-  }, [goToNext, currentWord, mode])
+  }, [goToNext, currentIndex, currentWord, mode])
 
   // 오답노트 모드: 외웠어요 (오답노트에서 제거, 언어별)
   const handleMastered = useCallback(() => {
     setKnownCount((c) => c + 1)
     if (currentWord) {
+      lastActionRef.current = { index: currentIndex, type: 'mastered', wordId: currentWord.id }
       removeFromWrongAnswers(currentWord.id, mode)
     }
     goToNext('left')
-  }, [goToNext, currentWord, mode])
+  }, [goToNext, currentIndex, currentWord, mode])
 
   // 오답노트 모드: 넘기기 (오답노트에서 제거 안함)
   const handleSkip = useCallback(() => {
+    if (currentWord) {
+      lastActionRef.current = { index: currentIndex, type: 'skip', wordId: currentWord.id }
+    }
     setUnknownCount((c) => c + 1)
     goToNext('left')
-  }, [goToNext])
+  }, [goToNext, currentIndex, currentWord])
 
   const handleRestart = () => {
     setCurrentIndex(0)
@@ -815,13 +938,16 @@ export function FlashcardScreen({
           if (wrongAnswerMode) handleSkip()
           else handleUnknown()
         }
+      } else if (e.key === 'ArrowUp' || e.key === 'b') {
+        e.preventDefault()
+        goToPrevious()
       } else if (e.key === 'Escape') {
         window.history.back()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isFlipped, handleFlip, handleKnown, handleUnknown, handleMastered, handleSkip, wrongAnswerMode, onClose])
+  }, [isFlipped, handleFlip, handleKnown, handleUnknown, handleMastered, handleSkip, goToPrevious, wrongAnswerMode, onClose])
 
   if (loading) {
     return (
@@ -1076,8 +1202,11 @@ export function FlashcardScreen({
       {/* Card */}
       <div className="flex-1 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
         <div 
-          onClick={!isAnimating ? handleFlip : undefined}
-          className={`w-full max-w-md cursor-pointer perspective-1000 transition-all duration-300 ease-out ${
+          onClick={handleCardClick}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className={`w-full max-w-md cursor-pointer perspective-1000 transition-all duration-300 ease-out touch-pan-y ${
             slideDirection === 'left' ? 'opacity-0 -translate-x-full rotate-[-10deg]' :
             slideDirection === 'right' ? 'opacity-0 translate-x-full rotate-[10deg]' : ''
           }`}
@@ -1227,6 +1356,7 @@ export function FlashcardScreen({
             <div>→ / O: {lang === 'sw' ? 'Najua' : '알아요'}</div>
           </>
         )}
+        <div>↑ / B: {lang === 'sw' ? 'Kadi iliyopita' : '이전 카드'}</div>
         <div>Esc: {lang === 'sw' ? 'Funga' : '닫기'}</div>
       </div>
     </div>

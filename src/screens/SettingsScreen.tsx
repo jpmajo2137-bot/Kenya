@@ -30,10 +30,12 @@ export function SettingsScreen({
       // 오답노트 데이터 삭제 (한국어/스와힐리어 버전)
       localStorage.removeItem('flashcard_wrong_answers_ko')
       localStorage.removeItem('flashcard_wrong_answers_sw')
-      // 퀴즈 관련 설정 삭제
-      localStorage.removeItem('quiz_access_time')
+      // 퀴즈 관련 설정 삭제 (보상형 광고 시청으로 부여된 30분 권한)
+      localStorage.removeItem('quiz_access_until')
       localStorage.removeItem('quiz_count')
       localStorage.removeItem('quiz_source')
+      // 전면 광고 마지막 노출 시각 (다시 4분 카운터 시작)
+      localStorage.removeItem('last_interstitial_shown_at')
     } catch {
       // ignore
     }
@@ -92,9 +94,16 @@ export function SettingsScreen({
       <div className="rounded-3xl p-5 app-card backdrop-blur">
         <div className="text-base font-extrabold text-white">{t('dataTitle', lang)}</div>
 
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="danger" onClick={onUserDataWipe}>
-            {lang === 'sw' ? 'Futa Data ya Mtumiaji' : '사용자 데이터 삭제'}
+            {lang === 'sw' ? 'Futa Data Yote ya Kifaa' : '기기 내 학습 데이터 전체 삭제'}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open('https://k-kiswahili-words.com/delete-data', '_blank')}
+          >
+            {lang === 'sw' ? '📋 Omba Kufuta Data' : '📋 데이터 삭제 요청'}
           </Button>
         </div>
       </div>

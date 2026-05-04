@@ -10,9 +10,52 @@ const texts = {
 
   // Top nav
   home: { sw: 'Nyumbani', ko: '홈' },
+  hangeul: { sw: 'Hangeul', ko: '한글' },
   dictionary: { sw: 'Kamusi', ko: '사전' },
   settings: { sw: 'Mipangilio', ko: '설정' },
   generator: { sw: 'Kizazi', ko: 'AI 생성' },
+
+  // Hangeul (한글 학습)
+  hangeulTitle: { sw: 'Jifunze Hangeul', ko: '한글 글자 공부' },
+  hangeulDesc: {
+    sw: 'Jifunze herufi za Kikorea (konsonanti na irabu).',
+    ko: '한글 자음과 모음을 학습하세요.',
+  },
+  hangeulConsonants: { sw: 'Konsonanti', ko: '자음' },
+  hangeulVowels: { sw: 'Irabu', ko: '모음' },
+  hangeulBasic: { sw: 'Msingi', ko: '기본' },
+  hangeulDouble: { sw: 'Mara Mbili', ko: '쌍자음' },
+  hangeulCompound: { sw: 'Changamano', ko: '복합 모음' },
+  hangeulTapToHear: { sw: 'Bofya kusikia matamshi', ko: '글자를 누르면 발음을 들을 수 있어요' },
+  hangeulRomanization: { sw: 'Matamshi', ko: '로마자' },
+  hangeulLetterName: { sw: 'Jina la herufi', ko: '글자 이름' },
+  hangeulExample: { sw: 'Mfano', ko: '예시' },
+  hangeulCombineTitle: { sw: 'Mchanganyiko wa Silabi', ko: '음절 합성' },
+  hangeulCombineConsonantHint: {
+    sw: 'Konsonanti + Irabu zote = Silabi',
+    ko: '자음 + 모든 모음 = 음절',
+  },
+  hangeulCombineVowelHint: {
+    sw: 'Konsonanti zote + Irabu = Silabi',
+    ko: '모든 자음 + 모음 = 음절',
+  },
+  // App-wide offline screen
+  offlineTitle: {
+    sw: 'Hakuna intaneti',
+    ko: '인터넷 연결이 필요해요',
+  },
+  offlineDesc: {
+    sw: 'Programu hii inahitaji intaneti kufanya kazi. Tafadhali unganisha Wi-Fi au data ya simu, kisha jaribu tena.',
+    ko: '이 앱은 인터넷 연결이 필요합니다.\nWi-Fi 또는 모바일 데이터를 켠 후 다시 시도해 주세요.',
+  },
+  offlineRetry: {
+    sw: 'Jaribu tena',
+    ko: '다시 시도',
+  },
+  offlineHint: {
+    sw: 'Itarejea kiotomatiki ukirudi mtandaoni.',
+    ko: '인터넷에 다시 연결되면 자동으로 복구됩니다.',
+  },
 
   // Dictionary
   dictionaryTitle: { sw: 'Kamusi', ko: '사전' },

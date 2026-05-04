@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { Button } from '../components/Button'
 import { VocabImage } from '../components/VocabImage'
 import { wikiSearchTitlesFromMeaningEn } from '../lib/wikiThumbnail'
-import { hasAzureTts, hasOpenAI } from '../lib/env'
-import { azureSynthesizeSpeech } from '../lib/azureTts'
+import { hasOpenAI } from '../lib/env'
+import { hasCachedTts, speakWithFreeFallback } from '../lib/ttsCache'
 import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import { generateWordImage } from '../lib/openai'
@@ -84,14 +84,14 @@ function Pron({ value }: { value: string | null }) {
   )
 }
 
-/** 스피커 아이콘 버튼 (스피커 + 음파) - 오프라인 지원; 영어 뜻은 URL 실패 시 Azure 여성 음성(표시 문구) 폴백 */
+/** 스피커 아이콘 버튼 (스피커 + 음파) - 오프라인 지원; 영어 뜻은 URL 실패 시 무료 폴백(브라우저 web speech) */
 function AudioBtn({
   url,
   muted,
-  /** 영어 뜻 열에서만 true — Azure 폴백·표시≠DB 시 클라이언트 TTS */
+  /** 영어 뜻 열에서만 true — URL 미존재·표시≠DB 시 클라이언트 무료 TTS 폴백 */
   meaningEnAzure,
   ttsFallbackText,
-  /** DB meaning_en과 화면 finalEn 첫 구절이 다르면 URL은 예전 TTS일 수 있음 → Azure로 표시 문구만 읽기 */
+  /** DB meaning_en과 화면 finalEn 첫 구절이 다르면 URL은 예전 TTS일 수 있음 → 무료 폴백으로 표시 문구만 읽기 */
   preferClientTtsForMeaningEn,
 }: {
   url: string | null
@@ -103,41 +103,31 @@ function AudioBtn({
 }) {
   const blobUrlRef = useRef<string | null>(null)
 
-  const canAzureMeaningEn =
+  const canFallbackMeaningEn =
     meaningEnAzure &&
     Boolean(ttsFallbackText?.trim()) &&
-    hasAzureTts() &&
+    hasCachedTts() &&
     !muted
 
-  if (!url && !canAzureMeaningEn) return null
+  if (!url && !canFallbackMeaningEn) return null
 
   const playAudio = async () => {
     if (muted) return
 
-    const runAzureFallback = async () => {
-      if (!canAzureMeaningEn || !ttsFallbackText) return
+    const runFreeFallback = async () => {
+      if (!canFallbackMeaningEn || !ttsFallbackText) return
       const line = englishGlossLineForTts(ttsFallbackText)
       if (!line || line === '—') return
-      try {
-        const buf = await azureSynthesizeSpeech(line, 'en')
-        const blob = new Blob([buf], { type: 'audio/mpeg' })
-        const objectUrl = URL.createObjectURL(blob)
-        const a2 = new Audio(objectUrl)
-        a2.onended = () => URL.revokeObjectURL(objectUrl)
-        a2.onerror = () => URL.revokeObjectURL(objectUrl)
-        await a2.play()
-      } catch {
-        /* ignore */
-      }
+      await speakWithFreeFallback(line, 'en')
     }
 
-    if (preferClientTtsForMeaningEn && canAzureMeaningEn && ttsFallbackText) {
-      await runAzureFallback()
+    if (preferClientTtsForMeaningEn && canFallbackMeaningEn && ttsFallbackText) {
+      await runFreeFallback()
       return
     }
 
     if (!url) {
-      await runAzureFallback()
+      await runFreeFallback()
       return
     }
 
@@ -160,22 +150,22 @@ function AudioBtn({
     }
 
     let fallbackOnce = false
-    const tryAzureOnce = async () => {
+    const tryFallbackOnce = async () => {
       if (fallbackOnce) return
       fallbackOnce = true
-      await runAzureFallback()
+      await runFreeFallback()
     }
 
     const a = new Audio(urlToPlay)
     if (meaningEnAzure) {
       a.addEventListener('error', () => {
-        void tryAzureOnce()
+        void tryFallbackOnce()
       })
     }
     try {
       await a.play()
     } catch {
-      await tryAzureOnce()
+      await tryFallbackOnce()
     }
   }
 
@@ -1009,7 +999,7 @@ export function CloudAllWordsScreen({
                       ? dbEnStripped.split(';')[0].trim().toLowerCase()
                       : ''
                     const preferClientTtsForMeaningEn =
-                      hasAzureTts() &&
+                      hasCachedTts() &&
                       !MUTE_MEANING_EN_AUDIO_BY_WORD.has(r.word ?? '') &&
                       Boolean(uiFirst) &&
                       (PREFER_CLIENT_MEANING_EN_TTS_BY_WORD.has(r.word ?? '') ||

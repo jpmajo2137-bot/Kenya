@@ -1,5 +1,31 @@
 apply plugin: 'com.android.application'
 
+// ===========================================
+// 서명 정보: 외부 파일 또는 환경 변수에서 로드
+// 우선순위: 1) android/keystore.properties 파일, 2) 환경 변수, 3) 빈 값(서명 없이 디버그 빌드만)
+// keystore.properties 는 .gitignore 에 포함되어야 합니다.
+// ===========================================
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreProps = false
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    hasKeystoreProps = true
+} else {
+    // 환경 변수 폴백 (CI/CD 환경)
+    def envStorePath = System.getenv("KENYA_KEYSTORE_PATH")
+    def envStorePassword = System.getenv("KENYA_KEYSTORE_PASSWORD")
+    def envKeyAlias = System.getenv("KENYA_KEY_ALIAS")
+    def envKeyPassword = System.getenv("KENYA_KEY_PASSWORD")
+    if (envStorePath && envStorePassword && envKeyAlias && envKeyPassword) {
+        keystoreProperties['storeFile'] = envStorePath
+        keystoreProperties['storePassword'] = envStorePassword
+        keystoreProperties['keyAlias'] = envKeyAlias
+        keystoreProperties['keyPassword'] = envKeyPassword
+        hasKeystoreProps = true
+    }
+}
+
 android {
     namespace = "com.kenyavocab.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,22 +33,32 @@ android {
         applicationId "com.kenyavocab.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 58
-        versionName "6.7"
+        versionCode 79
+        versionName "8.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+        // 보안: 다국어 리소스를 명시적으로 제한해 공격 표면 축소
+        resConfigs "en", "ko", "sw"
     }
     
     signingConfigs {
-        release {
-            storeFile file('../../keystore/release-key.jks')
-            storePassword 'kiswahili2026'
-            keyAlias 'upload'
-            keyPassword 'kiswahili2026'
+        if (hasKeystoreProps) {
+            release {
+                // storeFile 경로는 keystore.properties 의 storeFile 값을 android/ 기준으로 해석
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                // APK Signature Scheme v1, v2, v3, v4 모두 활성화 (Play Store 권장)
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
         }
     }
     
@@ -32,17 +68,55 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (hasKeystoreProps) {
+                signingConfig signingConfigs.release
+            }
             
             // 디버깅 비활성화
             debuggable false
             jniDebuggable false
+            // renderscriptDebuggable: AGP 8+ 에서 obsolete (RenderScript 자체가 폐기) → 제거
+            pseudoLocalesEnabled false
+            // 안전한 zipalign
+            zipAlignEnabled true
         }
         debug {
             // 디버그 빌드에서도 일부 보안 적용
             minifyEnabled false
             debuggable true
+            applicationIdSuffix ".debug"
         }
+    }
+    
+    // 보안: 패키징 옵션 - 메타데이터/디버그 심볼 제거
+    packagingOptions {
+        resources {
+            excludes += [
+                'META-INF/DEPENDENCIES',
+                'META-INF/LICENSE',
+                'META-INF/LICENSE.txt',
+                'META-INF/NOTICE',
+                'META-INF/NOTICE.txt',
+                'META-INF/*.kotlin_module',
+                'META-INF/proguard/*',
+                '**/*.kotlin_metadata',
+                'kotlin/**',
+                'kotlin-tooling-metadata.json',
+                'DebugProbesKt.bin'
+            ]
+        }
+        // 네이티브 라이브러리 디버그 심볼 제거 (앱 크기 감소 + 역공학 어려움)
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+    
+    // 보안: 컴파일러 lint 검증 강화
+    lintOptions {
+        checkReleaseBuilds true
+        abortOnError false
+        // 보안 관련 lint 카테고리 활성화
+        enable 'TrustAllX509TrustManager','BadHostnameVerifier','HardcodedDebugMode'
     }
     
     // 보안: 빌드 정보 숨김

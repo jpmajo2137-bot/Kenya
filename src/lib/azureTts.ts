@@ -1,101 +1,67 @@
-import { env } from './env'
+import { callEdgeFunctionBinary, isEdgeFunctionsConfigured } from './edgeFunctions'
 
 type TTSLang = 'sw' | 'ko' | 'en'
 
-// Azure Neural Voice 설정
-// https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support
+// Azure Neural Voice 기본값 (프록시 없이 voice 만 지정)
 const VOICE_MAP: Record<TTSLang, string> = {
-  ko: env.azureTtsKoVoice || 'ko-KR-SunHiNeural',      // 한국어 (여성)
-  sw: env.azureTtsSwVoice || 'sw-KE-ZuriNeural',      // 스와힐리어 (여성)
-  en: env.azureTtsEnVoice || 'en-US-JennyNeural',     // 영어 (여성)
-}
-
-// 음성 이름에서 언어 코드 추출 (예: ko-KR-SunHiNeural -> ko-KR)
-function langCodeFromVoice(voiceName: string): string {
-  const parts = voiceName.split('-')
-  return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : 'en-US'
+  ko: 'ko-KR-SunHiNeural',
+  sw: 'sw-KE-ZuriNeural',
+  en: 'en-US-JennyNeural',
 }
 
 /**
- * Microsoft Azure TTS로 음성 생성
- * @param text 변환할 텍스트
- * @param language 언어 코드 ('sw' | 'ko' | 'en')
- * @param voiceOverride 특정 음성 지정 (예: 'ko-KR-InJoonNeural')
- * @param rateOverride 속도 오버라이드 (예: '0.75' = 더 느리게)
- * @returns MP3 ArrayBuffer
+ * Microsoft Azure TTS 로 음성 생성 (Edge Function 프록시 경유)
+ *  - 클라이언트는 Azure 키를 갖지 않습니다.
  */
 export async function azureSynthesizeSpeech(
   text: string,
   language: TTSLang,
   voiceOverride?: string,
   rateOverride?: string,
-  /** SSML 콘텐츠 (escape 없이 삽입, "혁" 등 소리 길이 조정용) */
+  /** SSML 콘텐츠 (escape 없이 삽입). 제공시 prosody 안에 그대로 삽입됩니다. */
   ssmlContentOverride?: string
 ): Promise<ArrayBuffer> {
-  const subscriptionKey = env.azureTtsKey
-  const region = env.azureTtsRegion
-
-  if (!subscriptionKey) {
-    throw new Error('Azure TTS subscription key not configured (VITE_AZURE_TTS_KEY)')
-  }
-  if (!region) {
-    throw new Error('Azure TTS region not configured (VITE_AZURE_TTS_REGION)')
+  if (!isEdgeFunctionsConfigured()) {
+    throw new Error('Backend not configured')
   }
 
-  const voiceName = voiceOverride || VOICE_MAP[language] || VOICE_MAP.en
-  const langCode = langCodeFromVoice(voiceName)
-  const rate = rateOverride ?? env.azureTtsSpeed ?? '0.9'
+  const voice = voiceOverride || VOICE_MAP[language] || VOICE_MAP.en
+  const rate = rateOverride ?? '0.9'
 
-  const prosodyContent = ssmlContentOverride ?? escapeXml(text)
-
-  // SSML 형식으로 요청 생성
-  const ssml = `
-<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${langCode}'>
-  <voice name='${voiceName}'>
+  // ssmlContentOverride 가 있으면 클라이언트에서 SSML 직접 구성
+  let ssml: string | undefined
+  if (ssmlContentOverride) {
+    const langCode = langCodeFromVoice(voice)
+    ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${langCode}'>
+  <voice name='${voice}'>
     <prosody rate='${rate}'>
-      ${prosodyContent}
+      ${ssmlContentOverride}
     </prosody>
   </voice>
-</speak>`.trim()
-
-  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': subscriptionKey,
-      'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3',
-      'User-Agent': 'KenyaVocabApp',
-    },
-    body: ssml,
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => response.statusText)
-    throw new Error(`Azure TTS HTTP ${response.status}: ${errorText}`)
+</speak>`
   }
 
-  return response.arrayBuffer()
+  const audio = await callEdgeFunctionBinary<{
+    text: string
+    language: TTSLang
+    voice: string
+    rate: string
+    ssml?: string
+  }>('azure-tts', { text, language, voice, rate, ssml }, { timeoutMs: 60_000 })
+
+  return audio
+}
+
+function langCodeFromVoice(voiceName: string): string {
+  const parts = voiceName.split('-')
+  return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : 'en-US'
 }
 
 /**
- * XML 특수 문자 이스케이프
- */
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-}
-
-/**
- * Azure TTS 설정 확인
+ * Azure TTS 설정 확인 (백엔드 프록시 사용)
  */
 export function hasAzureTts(): boolean {
-  return Boolean(env.azureTtsKey && env.azureTtsRegion)
+  return isEdgeFunctionsConfigured()
 }
 
 /**

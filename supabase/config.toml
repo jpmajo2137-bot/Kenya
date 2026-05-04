@@ -1,0 +1,14 @@
+# Supabase 프로젝트 설정 (참고용)
+# 자세한 설정은 https://supabase.com/docs/guides/local-development/cli/config
+
+[functions.openai-vocab]
+verify_jwt = false
+
+[functions.openai-image]
+verify_jwt = false
+
+[functions.gemini-translate]
+verify_jwt = false
+
+[functions.azure-tts]
+verify_jwt = false

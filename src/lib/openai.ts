@@ -1,16 +1,14 @@
-import OpenAI from 'openai'
-import { env } from './env'
+/**
+ * OpenAI 호출 (Edge Function 프록시 경유)
+ *  - 클라이언트는 OpenAI 키를 갖지 않습니다.
+ *  - 모든 호출은 Supabase Edge Function 'openai-vocab' / 'openai-image' 를 거칩니다.
+ *  - 빌드 타임에 OpenAI SDK 가 번들에 포함되지 않습니다.
+ */
 
-// OpenAI client
-export const openai = env.openaiApiKey
-  ? new OpenAI({
-      apiKey: env.openaiApiKey,
-      dangerouslyAllowBrowser: true,
-    })
-  : null
+import { callEdgeFunction, isEdgeFunctionsConfigured } from './edgeFunctions'
 
 // ===========================================
-// Vocabulary Generation
+// 단어 생성
 // ===========================================
 
 export interface VocabGenerationRequest {
@@ -54,33 +52,41 @@ const CATEGORIES = [
   'government', 'emergency', 'travel', 'household', 'tools', 'professions'
 ]
 
+interface ChatCompletionResponse {
+  choices?: Array<{ message?: { content?: string } }>
+}
+
 export async function generateVocabulary(
   request: VocabGenerationRequest
 ): Promise<GeneratedWord[]> {
-  if (!openai) {
-    throw new Error('OpenAI API key not configured')
+  if (!isEdgeFunctionsConfigured()) {
+    throw new Error('Backend not configured')
   }
 
   const systemPrompt = request.mode === 'sw' ? SYSTEM_PROMPT_SW : SYSTEM_PROMPT_KO
   const targetLang = request.mode === 'sw' ? 'Korean' : 'Swahili'
-  
+
   const userPrompt = `Generate ${request.count} ${targetLang} vocabulary words in the category "${request.category}".
 Difficulty level: ${request.difficulty}/5`
 
-  const response = await openai.chat.completions.create({
-    model: env.openaiModel,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.8,
-    max_tokens: 4000,
+  const response = await callEdgeFunction<
+    {
+      systemPrompt: string
+      userPrompt: string
+      temperature: number
+      responseFormat: 'json_object'
+    },
+    ChatCompletionResponse
+  >('openai-vocab', {
+    systemPrompt,
+    userPrompt,
+    temperature: 80,
+    responseFormat: 'json_object',
   })
 
-  const content = response.choices[0]?.message?.content
+  const content = response.choices?.[0]?.message?.content
   if (!content) {
-    throw new Error('No response from OpenAI')
+    throw new Error('No response from backend')
   }
 
   try {
@@ -88,41 +94,8 @@ Difficulty level: ${request.difficulty}/5`
     const words = Array.isArray(parsed) ? parsed : parsed.words || parsed.vocabulary || []
     return words as GeneratedWord[]
   } catch {
-    console.error('Failed to parse OpenAI response:', content)
-    throw new Error('Invalid JSON response from OpenAI')
+    throw new Error('Invalid JSON response from backend')
   }
-}
-
-// ===========================================
-// Text-to-Speech (TTS)
-// ===========================================
-
-export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer'
-
-const VOICE_MAP: Record<string, TTSVoice> = {
-  sw: 'nova',  // 여성 (onyx는 남성)
-  ko: 'nova',
-  en: 'nova',  // 여성 목소리
-}
-
-export async function generateSpeech(
-  text: string,
-  language: 'sw' | 'ko' | 'en'
-): Promise<ArrayBuffer> {
-  if (!openai) {
-    throw new Error('OpenAI API key not configured')
-  }
-
-  const voice = VOICE_MAP[language] || 'alloy'
-
-  const response = await openai.audio.speech.create({
-    model: 'tts-1-hd',
-    voice,
-    input: text,
-    speed: 0.9,
-  })
-
-  return response.arrayBuffer()
 }
 
 // ===========================================
@@ -150,22 +123,22 @@ export async function* generateBatch(
 
   const wordsPerCategory = Math.ceil(totalCount / CATEGORIES.length)
   const wordsPerRequest = 10
-  
+
   for (const category of CATEGORIES) {
     if (progress.completed >= totalCount) break
-    
+
     const remaining = totalCount - progress.completed
     const categoryCount = Math.min(wordsPerCategory, remaining)
-    
+
     for (let difficulty = 1; difficulty <= 5; difficulty++) {
       if (progress.completed >= totalCount) break
-      
+
       const count = Math.min(wordsPerRequest, categoryCount / 5)
       if (count <= 0) continue
-      
+
       progress.current = `${category} (level ${difficulty})`
       onProgress?.(progress)
-      
+
       try {
         const words = await generateVocabulary({
           mode,
@@ -173,12 +146,12 @@ export async function* generateBatch(
           count: Math.ceil(count),
           difficulty,
         })
-        
+
         progress.completed += words.length
         onProgress?.(progress)
-        
+
         yield words
-        
+
         await new Promise(r => setTimeout(r, 1000))
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
@@ -195,33 +168,31 @@ export { CATEGORIES }
 // Image Generation
 // ===========================================
 
+interface ImageResponse {
+  url: string | null
+  b64_json: string | null
+}
+
 export async function generateWordImage(
   word: string,
   meaning: string
 ): Promise<string | null> {
-  if (!openai) {
-    throw new Error('OpenAI API key not configured')
+  if (!isEdgeFunctionsConfigured()) {
+    throw new Error('Backend not configured')
   }
 
-  try {
-    // gpt-image-1은 b64_json만 지원, dall-e-3는 url 지원
-    const response = await openai.images.generate({
-      model: 'gpt-image-1',
-      prompt: `A simple, clean illustration representing the word "${word}" which means "${meaning}". Educational vocabulary flashcard style, minimal background, clear visual.`,
-      n: 1,
-      size: '1024x1024',
-    })
-    const data = response.data
-    if (data && data[0]) {
-      // URL이 있으면 사용
-      if (data[0].url) return data[0].url
-      // base64 응답이면 data URL로 변환
-      const b64 = (data[0] as Record<string, unknown>).b64_json as string | undefined
-      if (b64) return `data:image/png;base64,${b64}`
-    }
-    throw new Error('No image data in response')
-  } catch (error) {
-    console.error('Image generation failed:', error)
-    throw error
-  }
+  const response = await callEdgeFunction<
+    { prompt: string; size: '1024x1024' },
+    ImageResponse
+  >('openai-image', {
+    prompt: `A simple, clean illustration representing the word "${word}" which means "${meaning}". Educational vocabulary flashcard style, minimal background, clear visual.`,
+    size: '1024x1024',
+  }, { timeoutMs: 120_000 })
+
+  if (response.url) return response.url
+  if (response.b64_json) return `data:image/png;base64,${response.b64_json}`
+  throw new Error('No image data in response')
 }
+
+// 구 인터페이스 호환을 위한 placeholder (다른 코드가 import openai 했을 때)
+export const openai = null

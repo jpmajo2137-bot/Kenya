@@ -1,47 +1,32 @@
-// Environment variables (Vite exposes VITE_ prefixed vars)
+/**
+ * Environment variables (Vite exposes VITE_ prefixed vars)
+ *
+ * 보안 정책: 민감 API 키는 더 이상 클라이언트 번들에 포함하지 않습니다.
+ *  - OpenAI / Gemini / Azure TTS / GCP TTS → Supabase Edge Function 으로 이동
+ *  - Supabase URL / anon key / app secret 만 클라이언트에 노출
+ */
 
 export const env = {
-  // OpenAI
-  openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY as string | undefined,
-  openaiModel: (import.meta.env.VITE_OPENAI_MODEL as string) || 'gpt-4o-mini',
-
-  // Google TTS
-  gcpTtsApiKey: import.meta.env.VITE_GCP_TTS_API_KEY as string | undefined,
-  gcpTtsAccessToken: import.meta.env.VITE_GCP_TTS_ACCESS_TOKEN as string | undefined,
-  gcpTtsKoVoice: import.meta.env.VITE_GCP_TTS_KO_VOICE as string | undefined,
-  gcpTtsSwVoice: import.meta.env.VITE_GCP_TTS_SW_VOICE as string | undefined, // default set in gcpTts.ts
-  gcpTtsEnVoice: import.meta.env.VITE_GCP_TTS_EN_VOICE as string | undefined,
-  gcpTtsSpeed: import.meta.env.VITE_GCP_TTS_SPEED ? Number(import.meta.env.VITE_GCP_TTS_SPEED) : undefined,
-
-  // Microsoft Azure TTS
-  azureTtsKey: import.meta.env.VITE_AZURE_TTS_KEY as string | undefined,
-  azureTtsRegion: import.meta.env.VITE_AZURE_TTS_REGION as string | undefined,
-  azureTtsKoVoice: import.meta.env.VITE_AZURE_TTS_KO_VOICE as string | undefined,
-  azureTtsSwVoice: import.meta.env.VITE_AZURE_TTS_SW_VOICE as string | undefined,
-  azureTtsEnVoice: import.meta.env.VITE_AZURE_TTS_EN_VOICE as string | undefined,
-  azureTtsSpeed: import.meta.env.VITE_AZURE_TTS_SPEED as string | undefined, // 0.5 ~ 2.0
-
-  // Gemini (Translation Dictionary)
-  geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY as string | undefined,
-
-  // Supabase
+  // Supabase (URL + anon key 만)
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string | undefined,
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
-}
 
-export function hasOpenAI() {
-  return Boolean(env.openaiApiKey)
+  // 앱 공유 시크릿 (선택, Edge Function 추가 검증용 - 빌드 시 박힘)
+  appSecret: import.meta.env.VITE_APP_SECRET as string | undefined,
 }
 
 export function hasSupabase() {
   return Boolean(env.supabaseUrl && env.supabaseAnonKey)
 }
 
-export function hasAzureTts() {
-  return Boolean(env.azureTtsKey && env.azureTtsRegion)
+/**
+ * 백엔드 (Edge Function) 가 모든 외부 API 를 프록시하므로
+ * "OpenAI/Gemini/Azure 사용 가능 여부" 는 모두 supabase 설정 여부와 동일합니다.
+ */
+export function hasOpenAI() {
+  return hasSupabase()
 }
 
-
-
-
-
+export function hasAzureTts() {
+  return hasSupabase()
+}

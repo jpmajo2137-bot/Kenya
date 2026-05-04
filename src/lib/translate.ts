@@ -5,7 +5,7 @@
  * - 리워드 광고 기반 횟수 충전 시스템
  */
 
-import { env } from './env'
+import { callEdgeFunction, isEdgeFunctionsConfigured, EdgeFunctionError } from './edgeFunctions'
 
 const TRANSLATE_DB_NAME = 'k-kiswahili-translate-cache'
 const TRANSLATE_DB_VERSION = 1
@@ -40,8 +40,18 @@ let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise
+  if (typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('IndexedDB not available'))
+  }
   dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(TRANSLATE_DB_NAME, TRANSLATE_DB_VERSION)
+    let req: IDBOpenDBRequest
+    try {
+      req = indexedDB.open(TRANSLATE_DB_NAME, TRANSLATE_DB_VERSION)
+    } catch (e) {
+      dbPromise = null
+      reject(e)
+      return
+    }
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(TRANSLATE_STORE)) {
@@ -51,8 +61,13 @@ function openDB(): Promise<IDBDatabase> {
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => {
+      // 실패 시 캐시를 재시도할 수 있도록 promise를 리셋
       dbPromise = null
       reject(req.error)
+    }
+    req.onblocked = () => {
+      dbPromise = null
+      reject(new Error('IndexedDB blocked'))
     }
   })
   return dbPromise
@@ -130,9 +145,15 @@ export function grantTranslateBonus(): void {
   localStorage.setItem(USAGE_KEY, '0')
 }
 
-// ─── Gemini Flash API ───
+// ─── Gemini API (Edge Function 프록시 경유) ───
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+// 여러 모델 폴백: 앞에서부터 시도하고 503/과부하 시 다음 모델로 전환
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-flash-latest',
+]
 
 function buildPrompt(word: string, fromLang: string): string {
   const fromLabel = fromLang === 'sw' ? 'Kiswahili' : fromLang === 'ko' ? '한국어' : 'English'
@@ -172,30 +193,40 @@ Important:
 - examples should be natural, practical sentences`
 }
 
-async function callGeminiAPI(word: string, fromLang: string): Promise<TranslationResult> {
-  const apiKey = env.geminiApiKey
-  if (!apiKey) throw new Error('Gemini API key not configured')
-
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: buildPrompt(word, fromLang) }] }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 600,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Gemini API error: ${response.status} - ${err}`)
+// 네트워크/일시적 에러로 판단되면 재시도 (모바일 WebView 콜드 스타트 대응)
+function isRetryableError(err: unknown, status?: number): boolean {
+  if (status !== undefined) {
+    // 5xx, 429(rate limit), 408(timeout) 재시도
+    return status >= 500 || status === 429 || status === 408
   }
+  const msg = err instanceof Error ? err.message : String(err)
+  // TypeError: Failed to fetch, NetworkError, AbortError 등
+  return (
+    /failed to fetch|network|timeout|aborted|load failed|ERR_|ECONN|ETIMEDOUT/i.test(msg) ||
+    err instanceof TypeError
+  )
+}
 
-  const data = await response.json()
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+interface GeminiResponse {
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+}
+
+async function callGeminiAPIOnce(
+  word: string,
+  fromLang: string,
+  model: string,
+): Promise<TranslationResult> {
+  const data = await callEdgeFunction<
+    { prompt: string; model: string },
+    GeminiResponse
+  >('gemini-translate', {
+    prompt: buildPrompt(word, fromLang),
+    model,
+  }, { timeoutMs: 25_000 })
 
   const parts = data?.candidates?.[0]?.content?.parts ?? []
   let text = ''
@@ -214,6 +245,52 @@ async function callGeminiAPI(word: string, fromLang: string): Promise<Translatio
 
   const parsed = JSON.parse(cleaned) as TranslationResult
   return parsed
+}
+
+// 특정 모델 과부하(503/429/5xx) 시 다음 모델로 폴백할지 판단
+function shouldFallbackToNextModel(err: unknown): boolean {
+  if (err instanceof EdgeFunctionError) {
+    return err.status === 502 || err.status === 503 || err.status === 429 || err.status >= 500
+  }
+  const status = (err as { status?: number })?.status
+  if (status === undefined) return false
+  return status === 503 || status === 429 || status >= 500
+}
+
+async function callGeminiAPI(word: string, fromLang: string): Promise<TranslationResult> {
+  let lastErr: unknown
+
+  for (let modelIdx = 0; modelIdx < GEMINI_MODELS.length; modelIdx++) {
+    const model = GEMINI_MODELS[modelIdx]
+    const isLastModel = modelIdx === GEMINI_MODELS.length - 1
+    const maxAttempts = modelIdx === 0 ? 3 : 2
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await callGeminiAPIOnce(word, fromLang, model)
+      } catch (err) {
+        lastErr = err
+        const status =
+          err instanceof EdgeFunctionError
+            ? err.status
+            : (err as { status?: number })?.status
+        const retryable = isRetryableError(err, status)
+
+        if (retryable && attempt < maxAttempts) {
+          await sleep(300 * Math.pow(2, attempt))
+          continue
+        }
+
+        if (!isLastModel && shouldFallbackToNextModel(err)) {
+          break
+        }
+
+        throw err
+      }
+    }
+  }
+
+  throw lastErr
 }
 
 // ─── Public API ───
@@ -236,5 +313,6 @@ export async function translate(word: string, fromLang: 'sw' | 'ko' | 'en'): Pro
 }
 
 export function hasGeminiApi(): boolean {
-  return Boolean(env.geminiApiKey)
+  // 백엔드 프록시(Edge Function)가 설정되어 있으면 사용 가능
+  return isEdgeFunctionsConfigured()
 }
