@@ -40,7 +40,6 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
           // 단일 거대 의존성은 자체 청크로 → 첫 화면이 필요할 때만 lazy 로드 가능
-          if (id.includes('microsoft-cognitiveservices-speech-sdk')) return 'vendor-azure-tts'
           if (id.includes('@google-cloud/text-to-speech')) return 'vendor-gcp-tts'
           if (id.includes('node_modules/openai/')) return 'vendor-openai'
           if (id.includes('@supabase/')) return 'vendor-supabase'
@@ -75,9 +74,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'vite.svg'],
       manifest: {
-        name: 'Jifunze Kikorea kwa Kiswahili',
-        short_name: 'Jifunze KK',
-        description: 'Jifunze Kikorea kwa Kiswahili - Korean Swahili Vocabulary App',
+        name: 'Learn Korean in English',
+        short_name: 'Korean English',
+        description: 'Learn Korean words and phrases in English with flashcards, quizzes, and audio.',
         theme_color: '#070a12',
         background_color: '#070a12',
         display: 'standalone',
@@ -119,9 +118,9 @@ export default defineConfig({
             urlPattern: /^https:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\//i,
             handler: 'NetworkOnly',
           },
-          // 외부 API (OpenAI/Gemini/Azure/Google TTS) 는 절대 캐시 금지
+          // 외부 API (OpenAI/Gemini/Google TTS) 는 절대 캐시 금지
           {
-            urlPattern: /^https:\/\/(api\.openai\.com|generativelanguage\.googleapis\.com|texttospeech\.googleapis\.com|.*\.tts\.speech\.microsoft\.com)\/.*/i,
+            urlPattern: /^https:\/\/(api\.openai\.com|generativelanguage\.googleapis\.com|texttospeech\.googleapis\.com)\/.*/i,
             handler: 'NetworkOnly',
           },
           // 광고/분석은 네트워크만

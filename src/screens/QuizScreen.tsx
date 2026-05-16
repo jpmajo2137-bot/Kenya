@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import type { Action } from '../app/state'
 import type { Deck, VocabItem, WrongNoteItem } from '../lib/types'
 import { Button } from '../components/Button'
@@ -10,6 +10,7 @@ import { getVocabByIds, getVocabFromCache, isOnline, onOnlineStatusChange, type 
 import { canAccessQuiz, showRewardedAd, getQuizAccessRemainingTime, hideBannerAd, resumeBannerAd, maybeShowInterstitialAtBreakpoint, setLearningSessionActive } from '../lib/admob'
 import { applyKoOverride, applyEnOverride, applySwOverride, WORD_DISPLAY_OVERRIDE } from '../lib/displayOverrides'
 import { GLOBAL_WORD_EXCLUSIONS } from '../lib/filterUtils'
+import { CorrectedAudioBtn } from '../components/CorrectedAudioBtn'
 
 type QuizSource = 'all' | 'wrong' | { deckId: string } | { cloud: string }
 
@@ -62,7 +63,7 @@ const CATEGORY_TRANSLATIONS: Record<string, string> = {
   '위기탈출': 'Dharura',
 }
 
-function translateCategory(cat: string, lang: 'sw' | 'ko'): string {
+function translateCategory(cat: string, lang: 'sw' | 'ko' | 'en'): string {
   if (lang === 'sw' && CATEGORY_TRANSLATIONS[cat]) {
     return CATEGORY_TRANSLATIONS[cat]
   }
@@ -110,7 +111,8 @@ function pickOptions(pool: VocabItem[], correct: VocabItem, lang: 'sw' | 'ko', c
           const raw = cleanMeaning(x.meaning_en || x.meaning_ko)
           return applyEnOverride(raw, x.word) ?? raw
         }
-        const raw = cleanMeaning(x.meaning_ko || x.meaning_en)
+        const mk = x.meaning_ko?.trim()
+        const raw = mk || cleanMeaning(x.meaning_en)
         return applyKoOverride(x.word, raw) ?? raw
       })
       .filter((t) => t && t !== correctText)
@@ -164,9 +166,13 @@ function getKoreanWord(item: CloudWord) {
     const raw = w.includes(',') ? w.split(',')[0].trim() : w;
     return applyKoOverride(item.word, raw) ?? raw;
   }
-  const rawMeaning = item.meaning_ko || item.meaning_en || '';
-  const trimmed = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning;
-  return applyKoOverride(item.word, trimmed) ?? trimmed;
+  if (item.meaning_ko?.trim()) {
+    const raw = item.meaning_ko.trim()
+    return applyKoOverride(item.word, raw) ?? raw
+  }
+  const rawMeaning = item.meaning_en || ''
+  const trimmed = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
+  return applyKoOverride(item.word, trimmed) ?? trimmed
 }
 
 // isSwToKo: true = 스와힐리어 문제 → 한국어 보기, false = 한국어 문제 → 스와힐리어 보기
@@ -244,6 +250,9 @@ export function QuizScreen({
   quizSource: QuizSource
   dispatch: (a: Action) => void
   lang: Lang
+  /** 라우팅용 (App.tsx에서 분기) - 본 컴포넌트는 사용하지 않음 */
+  nativeLang?: 'sw' | 'ko' | 'en'
+  targetLang?: 'sw' | 'ko' | 'en'
 }) {
   const [phase, setPhaseState] = useState<'setup' | 'play' | 'result'>('setup')
   // 'all'은 이전 버전 호환성 - 클라우드 '모든 단어'로 변환
@@ -327,7 +336,9 @@ export function QuizScreen({
   
   // 클라우드 단어 (cloudWords는 향후 확장을 위해 유지)
   const [_cloudWords, setCloudWords] = useState<CloudWord[]>([])
-  const [cloudLoading, setCloudLoading] = useState(false)
+  // 초기값을 true 로: 마운트 직후 useEffect 가 fetch 를 시작하기 전 한 프레임 동안
+  // cloudLoading=false & cloudPool=[] 상태가 보여서 "0 단어" 가 깜빡이는 문제를 방지.
+  const [cloudLoading, setCloudLoading] = useState(true)
   const [cloudPool, setCloudPool] = useState<CloudWord[]>([])
   const [allCloudWords, setAllCloudWords] = useState<CloudWord[]>([]) // 전체 단어 (보기용)
   const [allCloudWordsLoading, setAllCloudWordsLoading] = useState(true) // 전체 단어 로딩 상태
@@ -405,6 +416,16 @@ export function QuizScreen({
     }
     void fetchAllCloudWords()
   }, [lang, online])
+
+  // source 가 cloud/wrong 으로 바뀌는 즉시 (paint 전) cloudLoading=true 로 만들고
+  // cloudPool 도 비워서 "0 단어" 가 깜빡이는 일이 없도록 함.
+  // (useEffect 는 paint 후에 실행되므로 그 사이 한 프레임 동안 0 이 노출될 수 있음.)
+  useLayoutEffect(() => {
+    if ((typeof source === 'object' && 'cloud' in source) || source === 'wrong') {
+      setCloudLoading(true)
+      setCloudPool([])
+    }
+  }, [source])
 
   // 선택한 단어장의 클라우드 단어 가져오기 (문제용)
   useEffect(() => {
@@ -871,7 +892,26 @@ export function QuizScreen({
           <div className="flex items-center justify-between gap-2 sm:gap-3">
             <div className="text-2xl sm:text-3xl font-extrabold text-white">{t('quizTitle', lang)}</div>
             <div className="rounded-full bg-[rgb(var(--green))]/20 px-3 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-extrabold text-[rgb(var(--green))]">
-              {totalWords.toLocaleString()} {wordsLabel}
+              {totalWords === 0 && (cloudLoading || allCloudWordsLoading) ? (
+                <span className="inline-flex items-center gap-1 align-middle" aria-label={loadingMsg}>
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"
+                    style={{ animationDelay: '0ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"
+                    style={{ animationDelay: '150ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"
+                    style={{ animationDelay: '300ms' }}
+                  />
+                </span>
+              ) : (
+                <>
+                  {totalWords.toLocaleString()} {wordsLabel}
+                </>
+              )}
             </div>
           </div>
 
@@ -1098,31 +1138,29 @@ export function QuizScreen({
               - 한국어 사용자(ko): 스와힐리어 문제일 때만 (currentDirection=true, word가 스와힐리어) → word_audio_url
               - 스와힐리어 사용자(sw): 한국어 문제일 때만 (currentDirection=false) → word가 한국어면 word_audio_url, 아니면 meaning_ko_audio_url
           */}
-          {meaningLang === 'ko' && currentDirection && currentCloud?.word_audio_url && !containsKorean(currentCloud.word) && (
-            <button
-              onClick={() => {
-                const a = new Audio(currentCloud.word_audio_url!)
-                void a.play()
-              }}
-              className="mt-1.5 sm:mt-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base hover:bg-white/20 active:scale-95 transition touch-target"
-            >
-              🔊
-            </button>
+          {meaningLang === 'ko' && currentDirection && currentCloud && !containsKorean(currentCloud.word) && (
+            <CorrectedAudioBtn
+              url={currentCloud.word_audio_url}
+              displayText={typeof displayWord === 'string' ? displayWord : ''}
+              dbText={currentCloud.word}
+              lang="sw"
+              variant="quizMain"
+            />
           )}
-          {meaningLang === 'sw' && !currentDirection && (
-            // word가 한국어면 word_audio_url 사용, 아니면 meaning_ko_audio_url 사용
-            (containsKorean(currentCloud?.word || '') ? currentCloud?.word_audio_url : currentCloud?.meaning_ko_audio_url) && (
-            <button
-              onClick={() => {
-                const audioUrl = containsKorean(currentCloud?.word || '') ? currentCloud?.word_audio_url : currentCloud?.meaning_ko_audio_url
-                const a = new Audio(audioUrl!)
-                void a.play()
-              }}
-              className="mt-1.5 sm:mt-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base hover:bg-white/20 active:scale-95 transition touch-target"
-            >
-              🔊
-            </button>
-          ))}
+          {meaningLang === 'sw' && !currentDirection && currentCloud && (() => {
+            const wordIsKo = containsKorean(currentCloud.word)
+            const audioUrl = wordIsKo ? currentCloud.word_audio_url : currentCloud.meaning_ko_audio_url
+            const dbText = wordIsKo ? currentCloud.word : currentCloud.meaning_ko
+            return (
+              <CorrectedAudioBtn
+                url={audioUrl}
+                displayText={typeof displayWord === 'string' ? displayWord : ''}
+                dbText={dbText}
+                lang="ko"
+                variant="quizMain"
+              />
+            )
+          })()}
         </div>
         <div className="mt-3 sm:mt-4 grid gap-1 sm:gap-1.5">
           {options.map((opt, i) => {

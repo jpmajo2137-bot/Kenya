@@ -10,9 +10,22 @@ initSecurity()
 
 // 일회성 캐시 정리: PWA Service Worker / Cache Storage / 옛 TTS localStorage 키 제거
 // 버전을 올리고 싶으면 PURGE_VERSION 값을 변경하면 모든 클라이언트에서 다시 1회 실행됨
-const PURGE_VERSION = 'v2026-05-03-tts'
+const PURGE_VERSION = 'v2026-05-16-oxford-overrides-full-sync'
 ;(async () => {
   try {
+    if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      if (regs.length > 0) {
+        await Promise.all(regs.map((r) => r.unregister().catch(() => false)))
+        if (typeof caches !== 'undefined') {
+          const keys = await caches.keys()
+          await Promise.all(keys.map((k) => caches.delete(k).catch(() => false)))
+        }
+        location.reload()
+        return
+      }
+    }
+
     if (typeof localStorage === 'undefined') return
     if (localStorage.getItem('app:purge') === PURGE_VERSION) return
 

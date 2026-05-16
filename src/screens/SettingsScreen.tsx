@@ -1,17 +1,25 @@
 import { useState } from 'react'
-import type { AppStateV2 } from '../lib/types'
+import type { AppStateV3, NativeLang, TargetLang } from '../lib/types'
+import { LEARNABLE_BY_NATIVE } from '../lib/types'
 import type { Action } from '../app/state'
 import { Button } from '../components/Button'
 import { useToast } from '../components/Toast'
 import { t, type Lang } from '../lib/i18n'
 import { resetConsentAndShowForm, getAdPersonalization } from '../lib/admob'
 
+const NATIVE_OPTIONS: NativeLang[] = ['ko', 'en', 'sw']
+const NATIVE_LABEL: Record<NativeLang, Record<Lang, string>> = {
+  ko: { sw: 'Kikorea', ko: '한국어', en: 'Korean' },
+  en: { sw: 'Kiingereza', ko: '영어', en: 'English' },
+  sw: { sw: 'Kiswahili', ko: '스와힐리어', en: 'Swahili' },
+}
+
 export function SettingsScreen({
   state,
   dispatch,
   lang,
 }: {
-  state: AppStateV2
+  state: AppStateV3
   dispatch: (a: Action) => void
   lang: Lang
 }) {
@@ -68,22 +76,38 @@ export function SettingsScreen({
         </label>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <div className="text-sm font-extrabold text-white">{t('userModeLabel', lang)}</div>
-          <div className="mt-3 flex gap-2">
-            <Button
-              variant={state.settings.meaningLang === 'sw' ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => dispatch({ type: 'settings', patch: { meaningLang: 'sw' } })}
-            >
-              SW ({lang === 'sw' ? 'Kiingereza' : '영어'})
-            </Button>
-            <Button
-              variant={state.settings.meaningLang === 'ko' ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => dispatch({ type: 'settings', patch: { meaningLang: 'ko' } })}
-            >
-              KO ({lang === 'sw' ? 'Kikorea' : '한국어'})
-            </Button>
+          <div className="text-sm font-extrabold text-white">{t('nativeLangLabel', lang)}</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {NATIVE_OPTIONS.map((nl) => (
+              <Button
+                key={nl}
+                variant={state.settings.nativeLang === nl ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => {
+                  const allowed = LEARNABLE_BY_NATIVE[nl]
+                  const targetLang: TargetLang = allowed.includes(state.settings.targetLang)
+                    ? state.settings.targetLang
+                    : allowed[0]
+                  dispatch({ type: 'settings', patch: { nativeLang: nl, targetLang } })
+                }}
+              >
+                {NATIVE_LABEL[nl][lang]}
+              </Button>
+            ))}
+          </div>
+
+          <div className="mt-4 text-sm font-extrabold text-white">{t('targetLangLabel', lang)}</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {LEARNABLE_BY_NATIVE[state.settings.nativeLang].map((tl) => (
+              <Button
+                key={tl}
+                variant={state.settings.targetLang === tl ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => dispatch({ type: 'settings', patch: { targetLang: tl } })}
+              >
+                {NATIVE_LABEL[tl][lang]}
+              </Button>
+            ))}
           </div>
         </div>
       </div>
@@ -95,15 +119,54 @@ export function SettingsScreen({
         <div className="text-base font-extrabold text-white">{t('dataTitle', lang)}</div>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              const ok = window.confirm(
+                lang === 'sw'
+                  ? 'Hakika kufuta data ya toleo hili tu (kamusi, maneno, makosa)?'
+                  : lang === 'en'
+                    ? 'Reset only the current version data (decks, words, wrong notes)?'
+                    : '현재 버전의 데이터만 초기화 할까요?\n(단어장 / 단어 / 오답 노트)',
+              )
+              if (!ok) return
+              dispatch({ type: 'resetCurrentVersion' })
+              toast({
+                title: lang === 'sw' ? 'Imefutwa' : lang === 'en' ? 'Reset' : '초기화 완료',
+                description:
+                  lang === 'sw'
+                    ? 'Data ya toleo imefutwa.'
+                    : lang === 'en'
+                      ? 'Current version data has been reset.'
+                      : '현재 버전 데이터가 초기화되었습니다.',
+                position: 'center',
+              })
+            }}
+          >
+            {lang === 'sw'
+              ? '🔄 Anzisha Toleo Hili Upya'
+              : lang === 'en'
+                ? '🔄 Reset Current Version'
+                : '🔄 현재 버전만 초기화'}
+          </Button>
           <Button variant="danger" onClick={onUserDataWipe}>
-            {lang === 'sw' ? 'Futa Data Yote ya Kifaa' : '기기 내 학습 데이터 전체 삭제'}
+            {lang === 'sw'
+              ? 'Futa Data Yote ya Kifaa'
+              : lang === 'en'
+                ? 'Wipe All Device Data'
+                : '기기 내 학습 데이터 전체 삭제'}
           </Button>
           <Button
             variant="secondary"
             size="sm"
             onClick={() => window.open('https://k-kiswahili-words.com/delete-data', '_blank')}
           >
-            {lang === 'sw' ? '📋 Omba Kufuta Data' : '📋 데이터 삭제 요청'}
+            {lang === 'sw'
+              ? '📋 Omba Kufuta Data'
+              : lang === 'en'
+                ? '📋 Request Data Deletion'
+                : '📋 데이터 삭제 요청'}
           </Button>
         </div>
       </div>

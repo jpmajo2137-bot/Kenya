@@ -8,6 +8,7 @@ import { getWrongAnswerIds, getWrongAnswersCount, FlashcardScreen, WRONG_ANSWERS
 import { supabase } from '../lib/supabase'
 import { isOnline, getVocabByIds } from '../lib/offlineCache'
 import { applyKoOverride, applySwOverride, WORD_DISPLAY_OVERRIDE } from '../lib/displayOverrides'
+import { CorrectedAudioBtn } from '../components/CorrectedAudioBtn'
 
 const WORDS_PER_DAY = 40
 
@@ -39,6 +40,9 @@ export function WrongNoteScreen({
   dispatch: (a: Action) => void
   lang: Lang
   meaningLang: 'sw' | 'ko'
+  /** 라우팅용 (App.tsx에서 분기) - 본 컴포넌트는 사용하지 않음 */
+  nativeLang?: 'sw' | 'ko' | 'en'
+  targetLang?: 'sw' | 'ko' | 'en'
 }) {
   const [mode, setModeState] = useState<'home' | 'list' | 'dayList'>('home')
   const [cloudWrongWords, setCloudWrongWords] = useState<CloudWord[]>([])
@@ -362,7 +366,10 @@ export function WrongNoteScreen({
               const rawMeaning = meaningLang === 'sw' 
                 ? (word.meaning_sw || word.meaning_en || '') 
                 : (word.meaning_ko || word.meaning_en || '')
-              const trimmedMeaning = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
+              const trimmedMeaning =
+                meaningLang === 'sw' && rawMeaning.includes(',')
+                  ? rawMeaning.split(',')[0].trim()
+                  : rawMeaning
               const meaning = (meaningLang === 'sw'
                 ? applySwOverride(word.word, trimmedMeaning)
                 : applyKoOverride(word.word, trimmedMeaning)) ?? trimmedMeaning
@@ -371,18 +378,23 @@ export function WrongNoteScreen({
                   <div className="flex items-start justify-between gap-2 sm:gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="text-lg sm:text-xl font-extrabold text-white truncate">{WORD_DISPLAY_OVERRIDE[word.word]?.word ?? word.word}</div>
-                        {word.word_audio_url && (
-                          <button
-                            onClick={() => {
-                              const a = new Audio(word.word_audio_url!)
-                              void a.play()
-                            }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-sm hover:bg-white/20 active:scale-95 transition touch-target shrink-0"
-                          >
-                            🔊
-                          </button>
-                        )}
+                        {(() => {
+                          const displayWord = WORD_DISPLAY_OVERRIDE[word.word]?.word ?? word.word
+                          // meaningLang === 'ko' → 학습 대상은 스와힐리어, meaningLang === 'sw' → 한국어
+                          const wordLang = meaningLang === 'ko' ? 'sw' : 'ko'
+                          return (
+                            <>
+                              <div className="text-lg sm:text-xl font-extrabold text-white truncate">{displayWord}</div>
+                              <CorrectedAudioBtn
+                                url={word.word_audio_url}
+                                displayText={displayWord}
+                                dbText={word.word}
+                                lang={wordLang}
+                                variant="wrongNote"
+                              />
+                            </>
+                          )
+                        })()}
                       </div>
                       <div className="mt-0.5 sm:mt-1 text-sm sm:text-base text-white/85">{meaning}</div>
                     </div>

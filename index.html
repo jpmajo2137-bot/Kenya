@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
@@ -16,8 +16,8 @@
       style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com;
       font-src 'self' https://fonts.gstatic.com data:;
       img-src 'self' data: blob: https://*.supabase.co https://*.supabase.com https://*.googleusercontent.com https://*.gstatic.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.googleadservices.com;
-      media-src 'self' blob: https://*.supabase.co https://*.googleapis.com;
-      connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co https://api.openai.com https://texttospeech.googleapis.com https://generativelanguage.googleapis.com https://*.tts.speech.microsoft.com https://ip-api.com https://ipapi.co https://www.google-analytics.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.firebaseio.com https://*.firebase.google.com https://firebaseinstallations.googleapis.com;
+      media-src 'self' data: blob: https://*.supabase.co https://*.googleapis.com;
+      connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co https://api.openai.com https://texttospeech.googleapis.com https://generativelanguage.googleapis.com https://ip-api.com https://ipapi.co https://www.google-analytics.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.firebaseio.com https://*.firebase.google.com https://firebaseinstallations.googleapis.com;
       frame-src 'self' https://googleads.g.doubleclick.net https://www.google.com https://tpc.googlesyndication.com;
       worker-src 'self' blob:;
       object-src 'none';
@@ -51,11 +51,19 @@
     <!-- 테마 색상 -->
     <meta name="theme-color" content="#070a12" />
     
-    <title>Jifunze Kikorea kwa Kiswahili</title>
+    <meta name="description" content="Learn Korean words and phrases in English with flashcards, quizzes, and audio." />
+    <meta name="keywords" content="learn Korean, Korean vocabulary, Korean English, Hangul, Korean flashcards, Korean quiz, Korean pronunciation" />
+    <meta property="og:title" content="Learn Korean in English" />
+    <meta property="og:description" content="Learn Korean vocabulary, Hangul, pronunciation, and phrases in English." />
+    <title>Learn Korean in English</title>
   </head>
   <body style="margin:0;min-height:100vh;background:#070a12;color:#f3f4f6">
-    <div id="root" style="min-height:100vh;background:#070a12;display:flex;align-items:center;justify-content:center">
-      <div style="text-align:center;color:rgba(255,255,255,0.7)">로딩 중...</div>
+    <!-- #root 에 flex 를 걸지 않는다.
+         이전에는 display:flex;align-items:center;justify-content:center 가 있어
+         React 마운트 후 앱 루트 div 가 화면 가운데에 좁게(content-width) 자리잡아
+         max-w-md 가 적용되지 않는 비주얼 버그가 있었음. -->
+    <div id="root" style="min-height:100vh;background:#070a12">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;color:rgba(255,255,255,0.7)">Loading...</div>
     </div>
     <script>
       // Service Worker + Cache Storage 강제 정리 (번들 JS 로드 전에 실행)

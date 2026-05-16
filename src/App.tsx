@@ -3,25 +3,47 @@ import { Component, useEffect, useReducer, useRef, useState } from 'react'
 import { ToastProvider } from './components/Toast'
 import { cn } from './components/cn'
 import { loadState, loadStateAsync, saveState } from './lib/storage'
-import type { AppStateV2 } from './lib/types'
-import { createSeedState, reducer } from './app/state'
+import type { AppStateV3, NativeLang, TargetLang, VersionKey } from './lib/types'
+import { LEARNABLE_BY_NATIVE, currentVersionKey } from './lib/types'
+import { createSeedState, getActiveSlice, reducer } from './app/state'
 import { t, type Lang } from './lib/i18n'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { WordbookTab } from './screens/WordbookTab'
 import { QuizScreen } from './screens/QuizScreen'
 import { WrongNoteScreen } from './screens/WrongNoteScreen'
 import { DictionaryScreen } from './screens/DictionaryScreen'
+import { OxfordAllWordsDayList } from './screens/OxfordAllWordsDayList'
+import { OxfordQuizScreen } from './screens/OxfordQuizScreen'
+import { OxfordWrongNoteScreen } from './screens/OxfordWrongNoteScreen'
+import { OxfordDictionaryScreen } from './screens/OxfordDictionaryScreen'
 import { HangeulScreen } from './screens/HangeulScreen'
-import { isFirstRun, markFirstRunDone, detectInitialLang } from './lib/detectLang'
+import { isFirstRun, markFirstRunDone, detectInitialLang, DEFAULT_INITIAL_LANG_PAIR } from './lib/detectLang'
 import { startAdMobService, stopAdTimer, maybeShowInterstitialAd } from './lib/admob'
 import { isOnline, onOnlineStatusChange } from './lib/offlineCache'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { checkForUpdate, type UpdateInfo } from './lib/appUpdate'
 import { UpdateModal } from './components/UpdateModal'
+import { ReviewPromptModal } from './components/ReviewPromptModal'
+import { addUsageMs, shouldShowReviewPrompt } from './lib/reviewPrompt'
 
-type TopTab = AppStateV2['settings']['topTab']
-type BottomTab = AppStateV2['settings']['bottomTab']
+type TopTab = AppStateV3['settings']['topTab']
+type BottomTab = AppStateV3['settings']['bottomTab']
+
+const NATIVE_LANG_OPTIONS: NativeLang[] = ['ko', 'en', 'sw']
+
+const LANG_LABEL: Record<NativeLang | TargetLang, Record<Lang, string>> = {
+  ko: { sw: 'Kikorea', ko: '한국어', en: 'Korean' },
+  en: { sw: 'Kiingereza', ko: '영어', en: 'English' },
+  sw: { sw: 'Kiswahili', ko: '스와힐리어', en: 'Swahili' },
+}
+
+const APP_TITLE: Record<VersionKey, string> = {
+  'sw-ko': 'Kujifunza Kikorea kwa Kiswahili',
+  'ko-sw': '스와힐리어 단어장',
+  'en-ko': 'Learn Korean in English',
+  'ko-en': '영어 단어장',
+}
 
 // ErrorBoundary for catching React errors
 interface ErrorBoundaryState {
@@ -77,7 +99,34 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 }
 // #endregion
 
-function useInitialState(): AppStateV2 {
+// 인앱 네비게이션 깊이 추적용 이벤트.
+// window.history.pushState 호출을 가로채 'app:navpush'를 디스패치해
+// 헤더 뒤로가기 버튼 표시 여부를 결정한다.
+const APP_NAV_PUSH_EVENT = 'app:navpush'
+const APP_HISTORY_PATCHED_FLAG = '__appHistoryPatched__'
+
+if (typeof window !== 'undefined') {
+  type PatchableWindow = Window & { [APP_HISTORY_PATCHED_FLAG]?: boolean }
+  const w = window as PatchableWindow
+  if (!w[APP_HISTORY_PATCHED_FLAG]) {
+    const origPushState = window.history.pushState.bind(window.history)
+    window.history.pushState = function patchedPushState(
+      data: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) {
+      origPushState(data as never, unused, url ?? null)
+      try {
+        window.dispatchEvent(new CustomEvent(APP_NAV_PUSH_EVENT, { detail: data }))
+      } catch {
+        // CustomEvent 미지원 환경 무시
+      }
+    }
+    w[APP_HISTORY_PATCHED_FLAG] = true
+  }
+}
+
+function useInitialState(): AppStateV3 {
   const loaded = loadState()
   return loaded ?? createSeedState()
 }
@@ -118,7 +167,7 @@ function LangButton({
   return (
     <button
       className={cn(
-        'h-10 w-12 sm:h-11 sm:w-14 rounded-2xl text-xs sm:text-sm font-extrabold tracking-tight transition active:scale-95 ring-1 touch-target',
+        'flex-1 h-9 sm:h-10 rounded-xl px-2 text-[11px] sm:text-xs font-extrabold tracking-tight transition active:scale-95 ring-1 touch-target whitespace-nowrap',
         active
           ? 'bg-[rgb(var(--purple))] text-white ring-white/30'
           : 'bg-[rgb(70,85,115)] text-white hover:bg-[rgb(90,105,135)] ring-white/20',
@@ -165,6 +214,10 @@ function AppInner() {
   const [online, setOnline] = useState(isOnline())
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const restoring = useRef(false)
+  // 인앱 네비게이션 깊이. 0이면 헤더의 뒤로가기 버튼을 숨긴다.
+  const [navDepth, setNavDepth] = useState(0)
+  // 마운트 시 [topTab, bottomTab] effect 가 실행되어 발생하는 중복 pushState 를 방지하는 ref.
+  const skipFirstTabPush = useRef(true)
 
   useEffect(() => {
     return onOnlineStatusChange((next) => setOnline(next))
@@ -200,6 +253,9 @@ function AppInner() {
   // 앱 업데이트 상태
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [showUpdateModal, setShowUpdateModal] = useState(false)
+
+  // 리뷰 요청 팝업 상태 (10분 이상 사용 시 1회)
+  const [showReviewModal, setShowReviewModal] = useState(false)
 
   // 암호화된 상태 비동기 로드 (초기 저장 덮어쓰기 방지)
   useEffect(() => {
@@ -240,16 +296,26 @@ function AppInner() {
       setLangDetected(true)
     }, 2000)
 
-    detectInitialLang().then((detectedLang) => {
+    detectInitialLang().then((pair) => {
       clearTimeout(timeoutId)
-      console.log('[Lang] 감지 완료:', detectedLang)
-      dispatch({ type: 'settings', patch: { meaningLang: detectedLang } })
+      console.log('[Lang] 감지 완료:', pair)
+      dispatch({
+        type: 'settings',
+        patch: { nativeLang: pair.nativeLang, targetLang: pair.targetLang },
+      })
       markFirstRunDone()
       setLangDetected(true)
     }).catch((err) => {
       clearTimeout(timeoutId)
       console.log('[Lang] 감지 실패:', err)
-      // 감지 실패 시 기본값(sw) 유지
+      // 감지 실패 시 기본값(en-ko)로 보정
+      dispatch({
+        type: 'settings',
+        patch: {
+          nativeLang: DEFAULT_INITIAL_LANG_PAIR.nativeLang,
+          targetLang: DEFAULT_INITIAL_LANG_PAIR.targetLang,
+        },
+      })
       markFirstRunDone()
       setLangDetected(true)
     })
@@ -290,6 +356,59 @@ function AppInner() {
     return () => clearTimeout(timeoutId)
   }, [hydrated])
 
+  // 사용 시간 누적 + 10분 도달 시 리뷰 요청 팝업 표시
+  // - 화면이 보일 때만 카운트 (visibilitychange/blur로 일시정지)
+  // - localStorage에 누적 저장 → 여러 세션에 걸쳐서도 합산
+  useEffect(() => {
+    if (!hydrated) return
+
+    let lastVisibleAt: number | null =
+      typeof document !== 'undefined' && document.visibilityState === 'visible' ? Date.now() : null
+
+    const flush = () => {
+      if (lastVisibleAt !== null) {
+        const now = Date.now()
+        const delta = now - lastVisibleAt
+        if (delta > 0) addUsageMs(delta)
+        lastVisibleAt = now
+      }
+    }
+
+    const checkAndShow = () => {
+      flush()
+      if (shouldShowReviewPrompt()) {
+        setShowReviewModal(true)
+      }
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        lastVisibleAt = Date.now()
+      } else {
+        flush()
+        lastVisibleAt = null
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pagehide', flush)
+    window.addEventListener('beforeunload', flush)
+
+    // 30초마다 누적분 저장 + 임계값 체크 (절전모드 등 고려)
+    const intervalId = setInterval(checkAndShow, 30 * 1000)
+    // 첫 임계값 도달 빠른 감지(이전 세션에서 이미 10분 누적된 경우 즉시 표시)
+    const initialTimeoutId = setTimeout(checkAndShow, 5 * 1000)
+
+    return () => {
+      flush()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pagehide', flush)
+      window.removeEventListener('beforeunload', flush)
+      clearInterval(intervalId)
+      clearTimeout(initialTimeoutId)
+    }
+  }, [hydrated])
+
   // Android 하드웨어 뒤로가기 버튼 처리 (네이티브 앱에서만)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
@@ -307,12 +426,24 @@ function AppInner() {
     }
   }, [])
   
-  // 뒤로가기 시 - history.back()만 호출
+  // 뒤로가기: 인앱 히스토리가 있을 때만 동작
   const goBack = () => {
-    if (window.history.length > 1) {
+    if (navDepth > 0) {
       window.history.back()
     }
   }
+
+  // 인앱 네비게이션 깊이 추적: pushState 시 증가, popstate 시 감소
+  useEffect(() => {
+    const onPush = () => setNavDepth((d) => d + 1)
+    const onPop = () => setNavDepth((d) => Math.max(0, d - 1))
+    window.addEventListener(APP_NAV_PUSH_EVENT, onPush as EventListener)
+    window.addEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener(APP_NAV_PUSH_EVENT, onPush as EventListener)
+      window.removeEventListener('popstate', onPop)
+    }
+  }, [])
 
   useEffect(() => {
     if (!hydrated) return
@@ -337,12 +468,44 @@ function AppInner() {
     maybeShowInterstitialAd()
   }
 
-  const setMeaningLang = (lang: 'sw' | 'ko') => {
+  const setNativeLang = (next: NativeLang) => {
+    // 모국어 버튼 클릭 시 기본 학습 언어:
+    //   - 한국어 사용자 → 영어 (ko-en)
+    //   - 그 외(en/sw)는 LEARNABLE_BY_NATIVE 정의 순서대로
+    let target: TargetLang
+    if (next === 'ko') {
+      target = 'en'
+    } else {
+      const allowed = LEARNABLE_BY_NATIVE[next]
+      target = allowed.includes(state.settings.targetLang)
+        ? state.settings.targetLang
+        : allowed[0]
+    }
     setResetKey((k) => k + 1)
-    dispatch({ type: 'settings', patch: { meaningLang: lang, topTab: 'home', bottomTab: 'wordbook' } })
+    dispatch({
+      type: 'settings',
+      patch: {
+        nativeLang: next,
+        targetLang: target,
+        topTab: 'home',
+        bottomTab: 'wordbook',
+      },
+    })
   }
 
-  const lang: Lang = state.settings.meaningLang
+  const setTargetLang = (next: TargetLang) => {
+    setResetKey((k) => k + 1)
+    dispatch({
+      type: 'settings',
+      patch: { targetLang: next, topTab: 'home', bottomTab: 'wordbook' },
+    })
+  }
+
+  const lang: Lang = state.settings.nativeLang
+  const versionKey = currentVersionKey(state.settings)
+  const slice = getActiveSlice(state)
+  const targetOptions = LEARNABLE_BY_NATIVE[state.settings.nativeLang]
+  const isOxfordVersion = versionKey === 'en-ko' || versionKey === 'ko-en'
 
   // Back navigation handling: push history on tab change, popstate restores previous tab.
   useEffect(() => {
@@ -362,6 +525,14 @@ function AppInner() {
   }, [])
 
   useEffect(() => {
+    // 마운트 직후 1회는 건너뛴다.
+    // (이미 위의 replaceState 가 동일한 tab state 로 현재 엔트리를 설정했기 때문에
+    //  여기서 다시 pushState 하면 동일 상태의 중복 히스토리가 쌓여
+    //  헤더 뒤로가기 버튼이 동작하지 않는 것처럼 보이는 문제가 발생한다.)
+    if (skipFirstTabPush.current) {
+      skipFirstTabPush.current = false
+      return
+    }
     if (restoring.current) {
       restoring.current = false
       return
@@ -375,7 +546,11 @@ function AppInner() {
         <div className="text-center">
           <div className="text-4xl mb-4">📦</div>
           <div className="text-white/70 text-lg font-semibold">
-            {state.settings.meaningLang === 'sw' ? 'Inapakia data...' : '데이터 불러오는 중...'}
+            {state.settings.nativeLang === 'sw'
+              ? 'Inapakia data...'
+              : state.settings.nativeLang === 'en'
+                ? 'Loading data...'
+                : '데이터 불러오는 중...'}
           </div>
         </div>
       </div>
@@ -435,33 +610,62 @@ function AppInner() {
     >
       <div className="mx-auto w-full max-w-md px-3 sm:px-4 pt-6 sm:pt-10">
         <div className="flex items-start justify-between gap-2 sm:gap-4">
-          <div className="flex items-start gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={goBack}
-              className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-white/20 text-white transition active:scale-95 hover:bg-white/30 border border-white/30 shadow-md shadow-black/30 touch-target"
-              aria-label="뒤로 가기"
-            >
-              <span className="text-xl sm:text-2xl font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">←</span>
-            </button>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <img 
-                src="/logo.png" 
-                alt="Jifunze Kikorea kwa Kiswahili" 
-                className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover"
+          <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+            {navDepth > 0 ? (
+              <button
+                type="button"
+                onClick={goBack}
+                className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-white/20 text-white transition active:scale-95 hover:bg-white/30 border border-white/30 shadow-md shadow-black/30 touch-target shrink-0"
+                aria-label="뒤로 가기"
+              >
+                <span className="text-xl sm:text-2xl font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">←</span>
+              </button>
+            ) : null}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <img
+                src="/logo.png"
+                alt={APP_TITLE[versionKey]}
+                className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover shrink-0"
               />
-              <div className="app-title text-xl sm:text-2xl leading-tight">
-                Jifunze Kikorea kwa Kiswahili
+              <div className="app-title text-base sm:text-xl leading-tight truncate">
+                {APP_TITLE[versionKey]}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-0.5 sm:gap-1 rounded-2xl bg-white/0 p-0.5 sm:p-1">
-            <LangButton active={state.settings.meaningLang === 'sw'} onClick={() => setMeaningLang('sw')}>
-              {lang === 'sw' ? 'KSW' : 'SW'}
-            </LangButton>
-            <LangButton active={state.settings.meaningLang === 'ko'} onClick={() => setMeaningLang('ko')}>
-              {lang === 'sw' ? 'KKO' : 'KO'}
-            </LangButton>
+        </div>
+
+        <div className="mt-3 sm:mt-4 rounded-2xl p-2 app-banner backdrop-blur space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] sm:text-xs font-bold text-white/60 px-1.5 shrink-0">
+              {t('nativeLangLabel', lang)}
+            </span>
+            <div className="flex flex-1 gap-1">
+              {NATIVE_LANG_OPTIONS.map((nl) => (
+                <LangButton
+                  key={nl}
+                  active={state.settings.nativeLang === nl}
+                  onClick={() => setNativeLang(nl)}
+                >
+                  {LANG_LABEL[nl][lang]}
+                </LangButton>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] sm:text-xs font-bold text-white/60 px-1.5 shrink-0">
+              {t('targetLangLabel', lang)}
+            </span>
+            <div className="flex flex-1 gap-1">
+              {targetOptions.map((tl) => (
+                <LangButton
+                  key={tl}
+                  active={state.settings.targetLang === tl}
+                  onClick={() => setTargetLang(tl)}
+                >
+                  {LANG_LABEL[tl][lang]}
+                </LangButton>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -474,40 +678,112 @@ function AppInner() {
           {topTab === 'settings' ? <SettingsScreen state={state} dispatch={dispatch} lang={lang} /> : null}
           {topTab === 'hangeul' ? <HangeulScreen key={`hangeul-${resetKey}`} lang={lang} /> : null}
           {topTab === 'home' ? (
-            <>
-              {bottomTab === 'wordbook' ? (
-                <WordbookTab
-                  key={`wordbook-${resetKey}`}
-                  decks={state.decks}
-                  items={state.items}
-                  showEnglish={state.settings.showEnglish}
-                  dispatch={dispatch}
-                  lang={lang}
-                  meaningLang={state.settings.meaningLang}
-                />
-              ) : null}
-              {bottomTab === 'quiz' ? (
-                <QuizScreen
-                  key={`quiz-${resetKey}`}
-                  decks={state.decks}
-                  items={state.items}
-                  wrong={state.wrong}
-                  now={state.now}
-                  dueOnly={state.settings.dueOnly}
-                  meaningLang={state.settings.meaningLang}
-                  quizCount={state.settings.quizCount}
-                  quizSource={state.settings.quizSource}
-                  dispatch={dispatch}
-                  lang={lang}
-                />
-              ) : null}
-              {bottomTab === 'wrong' ? (
-                <WrongNoteScreen key={`wrong-${resetKey}`} decks={state.decks} items={state.items} wrong={state.wrong} dispatch={dispatch} lang={lang} meaningLang={state.settings.meaningLang} />
-              ) : null}
-              {bottomTab === 'dictionary' ? (
-                <DictionaryScreen key={`dict-${resetKey}`} lang={lang} decks={state.decks} dispatch={dispatch} />
-              ) : null}
-            </>
+            isOxfordVersion ? (
+              <>
+                {bottomTab === 'wordbook' ? (
+                  <OxfordAllWordsDayList
+                    key={`ox-wb-${resetKey}-${versionKey}`}
+                    lang={lang}
+                    nativeLang={state.settings.nativeLang}
+                    targetLang={state.settings.targetLang}
+                    showEnglish={state.settings.showEnglish}
+                    decks={slice.decks}
+                    items={slice.items}
+                    wrong={slice.wrong}
+                    dispatch={dispatch}
+                  />
+                ) : null}
+                {bottomTab === 'quiz' ? (
+                  <OxfordQuizScreen
+                    key={`ox-quiz-${resetKey}-${versionKey}`}
+                    decks={slice.decks}
+                    items={slice.items}
+                    wrong={slice.wrong}
+                    quizCount={state.settings.quizCount}
+                    quizSource={state.settings.quizSource}
+                    dispatch={dispatch}
+                    lang={lang}
+                    nativeLang={state.settings.nativeLang}
+                    targetLang={state.settings.targetLang}
+                  />
+                ) : null}
+                {bottomTab === 'wrong' ? (
+                  <OxfordWrongNoteScreen
+                    key={`ox-wrong-${resetKey}-${versionKey}`}
+                    wrong={slice.wrong}
+                    dispatch={dispatch}
+                    lang={lang}
+                    targetLang={state.settings.targetLang}
+                  />
+                ) : null}
+                {bottomTab === 'dictionary' ? (
+                  <OxfordDictionaryScreen
+                    key={`ox-dict-${resetKey}-${versionKey}`}
+                    lang={lang}
+                    targetLang={state.settings.targetLang}
+                    decks={slice.decks}
+                    items={slice.items}
+                    dispatch={dispatch}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <>
+                {bottomTab === 'wordbook' ? (
+                  <WordbookTab
+                    key={`wordbook-${resetKey}-${versionKey}`}
+                    decks={slice.decks}
+                    items={slice.items}
+                    showEnglish={state.settings.showEnglish}
+                    dispatch={dispatch}
+                    lang={lang}
+                    meaningLang={state.settings.meaningLang}
+                    nativeLang={state.settings.nativeLang}
+                    targetLang={state.settings.targetLang}
+                  />
+                ) : null}
+                {bottomTab === 'quiz' ? (
+                  <QuizScreen
+                    key={`quiz-${resetKey}-${versionKey}`}
+                    decks={slice.decks}
+                    items={slice.items}
+                    wrong={slice.wrong}
+                    now={state.now}
+                    dueOnly={state.settings.dueOnly}
+                    meaningLang={state.settings.meaningLang}
+                    quizCount={state.settings.quizCount}
+                    quizSource={state.settings.quizSource}
+                    dispatch={dispatch}
+                    lang={lang}
+                    nativeLang={state.settings.nativeLang}
+                    targetLang={state.settings.targetLang}
+                  />
+                ) : null}
+                {bottomTab === 'wrong' ? (
+                  <WrongNoteScreen
+                    key={`wrong-${resetKey}-${versionKey}`}
+                    decks={slice.decks}
+                    items={slice.items}
+                    wrong={slice.wrong}
+                    dispatch={dispatch}
+                    lang={lang}
+                    meaningLang={state.settings.meaningLang}
+                    nativeLang={state.settings.nativeLang}
+                    targetLang={state.settings.targetLang}
+                  />
+                ) : null}
+                {bottomTab === 'dictionary' ? (
+                  <DictionaryScreen
+                    key={`dict-${resetKey}-${versionKey}`}
+                    lang={lang}
+                    decks={slice.decks}
+                    dispatch={dispatch}
+                    nativeLang={state.settings.nativeLang}
+                    targetLang={state.settings.targetLang}
+                  />
+                ) : null}
+              </>
+            )
           ) : null}
         </div>
       </div>
@@ -539,6 +815,13 @@ function AppInner() {
         open={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
         updateInfo={updateInfo}
+        lang={lang}
+      />
+
+      {/* 리뷰 요청 팝업 (10분 이상 사용자 대상, 업데이트 팝업과 중복 표시 방지) */}
+      <ReviewPromptModal
+        open={showReviewModal && !showUpdateModal}
+        onClose={() => setShowReviewModal(false)}
         lang={lang}
       />
     </div>

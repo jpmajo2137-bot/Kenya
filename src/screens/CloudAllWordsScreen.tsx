@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../components/Button'
 import { VocabImage } from '../components/VocabImage'
+import { CorrectedAudioBtn } from '../components/CorrectedAudioBtn'
 import { wikiSearchTitlesFromMeaningEn } from '../lib/wikiThumbnail'
 import { hasOpenAI } from '../lib/env'
-import { hasCachedTts, speakWithFreeFallback } from '../lib/ttsCache'
 import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import {
+  fetchGeneratedVocabByIdsOrdered,
+  getDenseOrderedValidVocabIdsCached,
+  invalidateDenseAllWordsOrderCache,
+} from '../lib/cloudAllWordsDenseOrder'
 import { generateWordImage } from '../lib/openai'
 import {
   KO_DISPLAY_OVERRIDE,
@@ -23,18 +28,14 @@ import {
   MUTE_MEANING_EN_AUDIO_BY_WORD,
   PREFER_CLIENT_MEANING_EN_TTS_BY_WORD,
 } from '../lib/displayOverrides'
-import {
-  stripKoreanFromEnDisplay,
-  englishGlossLineForTts,
-  meaningEnGlossNeedsSlashTtsFix,
-} from '../lib/meaningEnTts'
+import { stripKoreanFromEnDisplay } from '../lib/meaningEnTts'
 import { koModeSwahiliPronDisplay } from '../lib/swahiliPronDisplay'
-import { 
-  getVocabFromCache, 
-  getCacheCount, 
-  isOnline, 
+import { koreanPronDisplay } from '../lib/koreanRomanization'
+import {
+  getVocabFromCache,
+  getCacheCount,
+  isOnline,
   onOnlineStatusChange,
-  getMediaFromCache
 } from '../lib/offlineCache'
 import { parseLevelFilter, buildTopicOrCondition, matchesTopicFilter, getClassifiedWordIds, isWordInClassifiedTopic, getOrderedWordIds, ORDERED_WORD_EXCLUSIONS, CLASSIFIED_WORD_EXCLUSIONS, getClassifiedInclusions, CLASSIFIED_EXTRA_WORDS, getClassifiedDayNExclusions, getClassifiedDayNExclusionsMap, CLASSIFIED_DAYN_EXCLUDE_PREV_DAY, getWordsFromPreviousDay, isRowExcludedByDayN, GLOBAL_WORD_EXCLUSIONS, CATEGORY_WORD_EXCLUSIONS, POS_WORD_EXCLUSIONS, POS_DAYN_EXCLUSIONS_BY_MODE, buildClassifiedDisplayList, getAllWordsNumberTailIds } from '../lib/filterUtils'
 
@@ -81,116 +82,6 @@ function Pron({ value }: { value: string | null }) {
     <span className="text-[13px] font-bold text-cyan-400 tracking-tight">
       [{value}]
     </span>
-  )
-}
-
-/** 스피커 아이콘 버튼 (스피커 + 음파) - 오프라인 지원; 영어 뜻은 URL 실패 시 무료 폴백(브라우저 web speech) */
-function AudioBtn({
-  url,
-  muted,
-  /** 영어 뜻 열에서만 true — URL 미존재·표시≠DB 시 클라이언트 무료 TTS 폴백 */
-  meaningEnAzure,
-  ttsFallbackText,
-  /** DB meaning_en과 화면 finalEn 첫 구절이 다르면 URL은 예전 TTS일 수 있음 → 무료 폴백으로 표시 문구만 읽기 */
-  preferClientTtsForMeaningEn,
-}: {
-  url: string | null
-  muted?: boolean
-  meaningEnAzure?: boolean
-  /** meaning_en 전용: 화면에 보이는 영어 뜻(URL 404·재생 실패 시 TTS) */
-  ttsFallbackText?: string
-  preferClientTtsForMeaningEn?: boolean
-}) {
-  const blobUrlRef = useRef<string | null>(null)
-
-  const canFallbackMeaningEn =
-    meaningEnAzure &&
-    Boolean(ttsFallbackText?.trim()) &&
-    hasCachedTts() &&
-    !muted
-
-  if (!url && !canFallbackMeaningEn) return null
-
-  const playAudio = async () => {
-    if (muted) return
-
-    const runFreeFallback = async () => {
-      if (!canFallbackMeaningEn || !ttsFallbackText) return
-      const line = englishGlossLineForTts(ttsFallbackText)
-      if (!line || line === '—') return
-      await speakWithFreeFallback(line, 'en')
-    }
-
-    if (preferClientTtsForMeaningEn && canFallbackMeaningEn && ttsFallbackText) {
-      await runFreeFallback()
-      return
-    }
-
-    if (!url) {
-      await runFreeFallback()
-      return
-    }
-
-    let urlToPlay = url
-
-    // 오프라인이면 캐시에서 가져오기
-    if (!isOnline()) {
-      try {
-        const blob = await getMediaFromCache(url)
-        if (blob) {
-          if (blobUrlRef.current) {
-            URL.revokeObjectURL(blobUrlRef.current)
-          }
-          urlToPlay = URL.createObjectURL(blob)
-          blobUrlRef.current = urlToPlay
-        }
-      } catch {
-        // 캐시 실패 시 원본 URL 시도
-      }
-    }
-
-    let fallbackOnce = false
-    const tryFallbackOnce = async () => {
-      if (fallbackOnce) return
-      fallbackOnce = true
-      await runFreeFallback()
-    }
-
-    const a = new Audio(urlToPlay)
-    if (meaningEnAzure) {
-      a.addEventListener('error', () => {
-        void tryFallbackOnce()
-      })
-    }
-    try {
-      await a.play()
-    } catch {
-      await tryFallbackOnce()
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={playAudio}
-      className="mt-1 flex h-11 w-11 items-center justify-center rounded-xl bg-[#1a1f3c] border border-white/10 transition hover:bg-[#252b4a]"
-      aria-label="Play audio"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="#5ad4e6"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-      >
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#5ad4e6" stroke="none" />
-        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-      </svg>
-    </button>
   )
 }
 
@@ -719,66 +610,20 @@ export function CloudAllWordsScreen({
           setRows(cleaned.slice(0, 500))
         }
       } else {
-        const isAllWords = !pf.category && !pf.pos && !pf.topic
-        const numberTailIds = isAllWords ? getAllWordsNumberTailIds(mode) : []
-        const needNumberTail = numberTailIds.length > 0
+        const isPlainAllWords = !pf.category && !pf.pos && !pf.topic
 
-        if (needNumberTail && dayNumber) {
-          const numberIdFilter = `(${numberTailIds.join(',')})`
-          const { count: nonNumCount } = await supabase
-            .from('generated_vocab')
-            .select('*', { count: 'exact', head: true })
-            .eq('mode', mode)
-            .not('id', 'in', numberIdFilter)
-          const nonNumberCount = nonNumCount ?? 0
-          setTotalCount(nonNumberCount + numberTailIds.length)
-          const nonNumberDays = Math.ceil(nonNumberCount / wordsPerDay)
-
-          if (dayNumber <= nonNumberDays) {
-            const startIdx = (dayNumber - 1) * wordsPerDay
-            const endIdx = startIdx + wordsPerDay - 1
-            const { data, error: e } = await supabase
-              .from('generated_vocab')
-              .select('*')
-              .eq('mode', mode)
-              .not('id', 'in', numberIdFilter)
-              .order('created_at', { ascending: true })
-              .range(startIdx, endIdx)
-            if (e) throw e
-            let cleaned = ((data ?? []) as CloudRow[]).filter((r) => !r.word?.startsWith('__deleted__'))
-            cleaned = cleaned.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
-            setRows(cleaned)
+        if (isPlainAllWords) {
+          const orderedIds = await getDenseOrderedValidVocabIdsCached(supabase, mode)
+          setTotalCount(orderedIds.length)
+          if (dayNumber) {
+            const pageIds = orderedIds.slice((dayNumber - 1) * wordsPerDay, dayNumber * wordsPerDay)
+            const fullRows = await fetchGeneratedVocabByIdsOrdered(supabase, pageIds)
+            setRows(fullRows as CloudRow[])
           } else {
-            const numOffset = (dayNumber - nonNumberDays - 1) * wordsPerDay
-            const targetIds = numberTailIds.slice(numOffset, numOffset + wordsPerDay)
-            if (targetIds.length === 0) { setRows([]); setLoading(false); return }
-            const { data, error: e } = await supabase
-              .from('generated_vocab')
-              .select('*')
-              .in('id', targetIds)
-            if (e) throw e
-            const idOrder = new Map(targetIds.map((id, i) => [id, i]))
-            let sorted = ((data ?? []) as CloudRow[]).sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0))
-            sorted = sorted.filter((r) => !r.word?.startsWith('__deleted__'))
-            setRows(sorted)
+            const previewIds = orderedIds.slice(0, 500)
+            const fullRows = await fetchGeneratedVocabByIdsOrdered(supabase, previewIds)
+            setRows(fullRows as CloudRow[])
           }
-        } else if (needNumberTail && !dayNumber) {
-          const { count } = await supabase
-            .from('generated_vocab')
-            .select('*', { count: 'exact', head: true })
-            .eq('mode', mode)
-          setTotalCount(count ?? 0)
-          const { data, error: e } = await supabase
-            .from('generated_vocab')
-            .select('*')
-            .eq('mode', mode)
-            .not('id', 'in', `(${numberTailIds.join(',')})`)
-            .order('created_at', { ascending: false })
-            .limit(500)
-          if (e) throw e
-          let cleaned = ((data ?? []) as CloudRow[]).filter((r) => !r.word?.startsWith('__deleted__'))
-          cleaned = cleaned.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
-          setRows(cleaned)
         } else {
           let countQuery = supabase
             .from('generated_vocab')
@@ -881,7 +726,14 @@ export function CloudAllWordsScreen({
               }
             </div>
           </div>
-          <Button variant="secondary" onClick={fetchRows} disabled={loading}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              invalidateDenseAllWordsOrderCache()
+              void fetchRows()
+            }}
+            disabled={loading}
+          >
             {lang === 'sw' ? 'Sasisha' : '새로고침'}
           </Button>
         </div>
@@ -901,9 +753,12 @@ export function CloudAllWordsScreen({
 
       <div className="grid gap-4">
         {displayRows.map((r) => {
-          // 쉼표가 있으면 첫 번째 부분만 사용 (데이터 정제)
+          // 스와 뜻만 쉼표 첫 항목으로 정제 (한국어 뜻은 "찢김, 균열"처럼 전체 표시)
           let rawMeaning = mode === 'sw' ? r.meaning_sw : r.meaning_ko
-          rawMeaning = rawMeaning?.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning ?? null
+          rawMeaning =
+            mode === 'sw' && rawMeaning?.includes(',')
+              ? rawMeaning.split(',')[0].trim()
+              : rawMeaning ?? null
 
           // 한국어 -하다 동사인데 뜻이 형용사형이면 표시만 동사형으로 교정 (SW: kuwa ~, EN: to be ~)
           const isKoreanVerbHada = mode === 'sw' && /하다$/.test(r.word ?? '')
@@ -937,12 +792,20 @@ export function CloudAllWordsScreen({
                     const displayPron =
                       mode === 'ko'
                         ? koModeSwahiliPronDisplay(displayWord, r.word_pronunciation, override?.pron)
-                        : (override?.pron ?? r.word_pronunciation)
+                        : koreanPronDisplay(displayWord, r.word_pronunciation, override?.pron)
+                    // mode === 'ko' 학습자 → 단어는 스와힐리어, mode === 'sw' 학습자 → 단어는 한국어
+                    const wordLang = mode === 'ko' ? 'sw' : 'ko'
                     return (
                       <>
                         <span className="text-xl font-extrabold text-white break-words">{displayWord}</span>
                         <Pron value={displayPron} />
-                        <AudioBtn url={r.word_audio_url} />
+                        <CorrectedAudioBtn
+                          url={r.word_audio_url}
+                          displayText={displayWord}
+                          dbText={r.word}
+                          lang={wordLang}
+                          variant="cloudList"
+                        />
                       </>
                     )
                   })()}
@@ -992,28 +855,17 @@ export function CloudAllWordsScreen({
                     // displayEn에 이미 EN_* 오버라이드(단어별·예문별 포함) 적용됨. 여기서 EN_DISPLAY_OVERRIDE를
                     // 다시 쓰면 naturally → usually 같은 2차 치환이 깨짐.
                     const finalEn = stripKoreanFromEnDisplay(displayEn ?? '') || '—'
-                    const dbEnStripped = stripKoreanFromEnDisplay(r.meaning_en ?? '')
-                    const uiFirst =
-                      finalEn !== '—' ? finalEn.split(';')[0].trim().toLowerCase() : ''
-                    const dbFirst = dbEnStripped
-                      ? dbEnStripped.split(';')[0].trim().toLowerCase()
-                      : ''
-                    const preferClientTtsForMeaningEn =
-                      hasCachedTts() &&
-                      !MUTE_MEANING_EN_AUDIO_BY_WORD.has(r.word ?? '') &&
-                      Boolean(uiFirst) &&
-                      (PREFER_CLIENT_MEANING_EN_TTS_BY_WORD.has(r.word ?? '') ||
-                        (Boolean(dbFirst) && uiFirst !== dbFirst) ||
-                        meaningEnGlossNeedsSlashTtsFix(finalEn))
                     return (
                       <div className="flex flex-col min-w-0">
                         <span className="text-base font-semibold text-white/80 break-words">{finalEn}</span>
-                        <AudioBtn
+                        <CorrectedAudioBtn
                           url={r.meaning_en_audio_url}
+                          displayText={finalEn !== '—' ? finalEn : ''}
+                          dbText={r.meaning_en}
+                          lang="en"
                           muted={MUTE_MEANING_EN_AUDIO_BY_WORD.has(r.word ?? '')}
-                          meaningEnAzure
-                          ttsFallbackText={finalEn !== '—' ? finalEn : undefined}
-                          preferClientTtsForMeaningEn={preferClientTtsForMeaningEn}
+                          preferClientTts={PREFER_CLIENT_MEANING_EN_TTS_BY_WORD.has(r.word ?? '')}
+                          variant="cloudList"
                         />
                       </div>
                     )
@@ -1026,8 +878,22 @@ export function CloudAllWordsScreen({
                 <div className="mt-4 rounded-2xl bg-white/5 p-4">
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex flex-col">
-                      <span className="text-base font-bold text-purple-300">{EXAMPLE_DISPLAY_OVERRIDE[r.example]?.text ?? r.example}</span>
-                      <AudioBtn url={r.example_audio_url} />
+                      {(() => {
+                        const exDisplay = EXAMPLE_DISPLAY_OVERRIDE[r.example]?.text ?? r.example
+                        const exLang = mode === 'ko' ? 'sw' : 'ko'
+                        return (
+                          <>
+                            <span className="text-base font-bold text-purple-300">{exDisplay}</span>
+                            <CorrectedAudioBtn
+                              url={r.example_audio_url}
+                              displayText={exDisplay}
+                              dbText={r.example}
+                              lang={exLang}
+                              variant="cloudList"
+                            />
+                          </>
+                        )
+                      })()}
                     </div>
                     <Pron
                       value={
@@ -1037,7 +903,11 @@ export function CloudAllWordsScreen({
                               r.example_pronunciation,
                               EXAMPLE_DISPLAY_OVERRIDE[r.example]?.pron,
                             )
-                          : (EXAMPLE_DISPLAY_OVERRIDE[r.example]?.pron ?? r.example_pronunciation)
+                          : koreanPronDisplay(
+                              EXAMPLE_DISPLAY_OVERRIDE[r.example]?.text ?? r.example,
+                              r.example_pronunciation,
+                              EXAMPLE_DISPLAY_OVERRIDE[r.example]?.pron,
+                            )
                       }
                     />
                   </div>

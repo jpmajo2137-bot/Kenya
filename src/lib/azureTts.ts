@@ -1,95 +1,103 @@
-import { callEdgeFunctionBinary, isEdgeFunctionsConfigured } from './edgeFunctions'
+/**
+ * Azure TTS 클라이언트 래퍼.
+ *
+ * 동작:
+ *  - Edge Function `azure-tts` 를 호출하면 서버가
+ *      1) Supabase Storage 캐시 확인 (있으면 즉시 URL 반환, Azure 미호출 = 비용 0)
+ *      2) 없으면 Azure TTS 호출 → mp3 → Storage 업로드 → public URL
+ *    를 처리한다. 같은 텍스트/언어 조합은 전 세계 사용자가 무료로 공유 재생.
+ *  - 클라이언트는 추가로 (text, lang) → URL 매핑을 localStorage 에 영구 캐시한다.
+ *    => 같은 사용자의 두 번째 재생부터는 Edge Function 호출도 생략.
+ *  - 외부에는 단 하나의 함수 `azureTtsUrl(text, lang)` 만 노출.
+ */
 
-type TTSLang = 'sw' | 'ko' | 'en'
+import { callEdgeFunction, isEdgeFunctionsConfigured } from './edgeFunctions'
 
-// Azure Neural Voice 기본값 (프록시 없이 voice 만 지정)
-const VOICE_MAP: Record<TTSLang, string> = {
-  ko: 'ko-KR-SunHiNeural',
-  sw: 'sw-KE-ZuriNeural',
-  en: 'en-US-JennyNeural',
+export type AzureTtsLang = 'sw' | 'ko' | 'en'
+
+export interface AzureTtsResponse {
+  url: string
+  cached: boolean
+  hash: string
+  uploadFailed?: boolean
 }
+
+const LS_PREFIX = 'azure-tts-url:'
+const VOICE_VERSION = 1 // Edge Function 의 VOICE_VERSION 과 동일해야 한다
+
+function lsKey(text: string, lang: AzureTtsLang): string {
+  return `${LS_PREFIX}v${VOICE_VERSION}:${lang}:${text}`
+}
+
+function loadLocalUrl(text: string, lang: AzureTtsLang): string | null {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    return localStorage.getItem(lsKey(text, lang))
+  } catch {
+    return null
+  }
+}
+
+function saveLocalUrl(text: string, lang: AzureTtsLang, url: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    // data: URL (Storage 업로드 실패시 폴백) 은 너무 커서 영구 캐시하지 않는다
+    if (url.startsWith('data:')) return
+    localStorage.setItem(lsKey(text, lang), url)
+  } catch {
+    /* localStorage quota or disabled */
+  }
+}
+
+const memCache = new Map<string, string>()
+const inflight = new Map<string, Promise<string | null>>()
 
 /**
- * Microsoft Azure TTS 로 음성 생성 (Edge Function 프록시 경유)
- *  - 클라이언트는 Azure 키를 갖지 않습니다.
+ * 텍스트→Azure TTS mp3 의 재생 가능한 URL 을 반환한다.
+ *  - 메모리 캐시 → localStorage → Edge Function 순으로 시도
+ *  - 동일 (text,lang) 동시 호출은 dedup 됨
+ *  - 실패 시 null
  */
-export async function azureSynthesizeSpeech(
-  text: string,
-  language: TTSLang,
-  voiceOverride?: string,
-  rateOverride?: string,
-  /** SSML 콘텐츠 (escape 없이 삽입). 제공시 prosody 안에 그대로 삽입됩니다. */
-  ssmlContentOverride?: string
-): Promise<ArrayBuffer> {
-  if (!isEdgeFunctionsConfigured()) {
-    throw new Error('Backend not configured')
+export async function azureTtsUrl(text: string, lang: AzureTtsLang): Promise<string | null> {
+  const trimmed = text?.trim()
+  if (!trimmed) return null
+  if (!isEdgeFunctionsConfigured()) return null
+
+  const cacheKey = `${lang}:${trimmed}`
+
+  const mem = memCache.get(cacheKey)
+  if (mem) return mem
+
+  const persisted = loadLocalUrl(trimmed, lang)
+  if (persisted) {
+    memCache.set(cacheKey, persisted)
+    return persisted
   }
 
-  const voice = voiceOverride || VOICE_MAP[language] || VOICE_MAP.en
-  const rate = rateOverride ?? '0.9'
+  const existing = inflight.get(cacheKey)
+  if (existing) return existing
 
-  // ssmlContentOverride 가 있으면 클라이언트에서 SSML 직접 구성
-  let ssml: string | undefined
-  if (ssmlContentOverride) {
-    const langCode = langCodeFromVoice(voice)
-    ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${langCode}'>
-  <voice name='${voice}'>
-    <prosody rate='${rate}'>
-      ${ssmlContentOverride}
-    </prosody>
-  </voice>
-</speak>`
-  }
+  const promise = (async (): Promise<string | null> => {
+    try {
+      const res = await callEdgeFunction<
+        { text: string; language: AzureTtsLang },
+        AzureTtsResponse
+      >('azure-tts', { text: trimmed, language: lang }, { timeoutMs: 30_000 })
+      if (!res?.url) return null
+      memCache.set(cacheKey, res.url)
+      saveLocalUrl(trimmed, lang, res.url)
+      return res.url
+    } catch {
+      return null
+    }
+  })()
 
-  const audio = await callEdgeFunctionBinary<{
-    text: string
-    language: TTSLang
-    voice: string
-    rate: string
-    ssml?: string
-  }>('azure-tts', { text, language, voice, rate, ssml }, { timeoutMs: 60_000 })
-
-  return audio
+  inflight.set(cacheKey, promise)
+  promise.finally(() => inflight.delete(cacheKey))
+  return promise
 }
 
-function langCodeFromVoice(voiceName: string): string {
-  const parts = voiceName.split('-')
-  return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : 'en-US'
-}
-
-/**
- * Azure TTS 설정 확인 (백엔드 프록시 사용)
- */
+/** Azure TTS 사용 가능 여부 (Edge Function 설정 시 true) */
 export function hasAzureTts(): boolean {
   return isEdgeFunctionsConfigured()
-}
-
-/**
- * 사용 가능한 음성 목록 (참고용)
- */
-export const AZURE_VOICES = {
-  ko: [
-    { name: 'ko-KR-SunHiNeural', gender: 'Female', description: '선희 (기본)' },
-    { name: 'ko-KR-InJoonNeural', gender: 'Male', description: '인준' },
-    { name: 'ko-KR-BongJinNeural', gender: 'Male', description: '봉진' },
-    { name: 'ko-KR-GookMinNeural', gender: 'Male', description: '국민' },
-    { name: 'ko-KR-JiMinNeural', gender: 'Female', description: '지민' },
-    { name: 'ko-KR-SeoHyeonNeural', gender: 'Female', description: '서현' },
-    { name: 'ko-KR-SoonBokNeural', gender: 'Female', description: '순복' },
-    { name: 'ko-KR-YuJinNeural', gender: 'Female', description: '유진' },
-  ],
-  sw: [
-    { name: 'sw-KE-ZuriNeural', gender: 'Female', description: 'Zuri (기본)' },
-    { name: 'sw-KE-RafikiNeural', gender: 'Male', description: 'Rafiki' },
-    { name: 'sw-TZ-RehemaNeural', gender: 'Female', description: 'Rehema (탄자니아)' },
-    { name: 'sw-TZ-DaudiNeural', gender: 'Male', description: 'Daudi (탄자니아)' },
-  ],
-  en: [
-    { name: 'en-US-JennyNeural', gender: 'Female', description: 'Jenny (기본)' },
-    { name: 'en-US-GuyNeural', gender: 'Male', description: 'Guy' },
-    { name: 'en-US-AriaNeural', gender: 'Female', description: 'Aria' },
-    { name: 'en-US-DavisNeural', gender: 'Male', description: 'Davis' },
-    { name: 'en-GB-SoniaNeural', gender: 'Female', description: 'Sonia (영국)' },
-    { name: 'en-GB-RyanNeural', gender: 'Male', description: 'Ryan (영국)' },
-  ],
 }

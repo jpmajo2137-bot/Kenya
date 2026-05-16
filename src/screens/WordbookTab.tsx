@@ -114,6 +114,9 @@ export function WordbookTab({
   dispatch: (a: Action) => void
   lang: Lang
   meaningLang: 'sw' | 'ko'
+  /** 라우팅용 (App.tsx에서 분기) - 본 컴포넌트는 사용하지 않음 */
+  nativeLang?: 'sw' | 'ko' | 'en'
+  targetLang?: 'sw' | 'ko' | 'en'
 }) {
   const { toast } = useToast()
   
@@ -590,10 +593,18 @@ export function WordbookTab({
           <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-12 h-3 bg-black/20 rounded-full blur-sm animate-pulse" />
         </div>
         <div className="mt-6 text-lg sm:text-xl font-bold text-white">
-          {lang === 'sw' ? 'Inapakia maneno...' : '단어 로딩 중...'}
+          {lang === 'sw'
+            ? 'Inapakia maneno...'
+            : lang === 'en'
+              ? 'Loading words...'
+              : '단어 로딩 중...'}
         </div>
         <div className="mt-2 text-sm text-white/60">
-          {lang === 'sw' ? 'Tafadhali subiri' : '잠시만 기다려주세요'}
+          {lang === 'sw'
+            ? 'Tafadhali subiri'
+            : lang === 'en'
+              ? 'Please wait a moment'
+              : '잠시만 기다려주세요'}
         </div>
         <div className="mt-6 flex gap-1.5">
           <div className="w-2.5 h-2.5 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />

@@ -38,11 +38,14 @@ export const KO_DISPLAY_OVERRIDE: Record<string, string> = {
   '(~을) 활용하다': '이익을 얻다, (~을) 활용하다',
   성악의: '보컬, 노래',
   적당히: '적절하게',
-  충분히: '충분한',
   가상의: '온라인, 가상의',
   '졸고 있는': '졸고 있다',
   대관절: '도대체, 대관절',
   뚜렷한: '뚜렷하게',
+  '뚜렷한, 분명한': '뚜렷하게, 분명히',
+  '대략, تقريباً': '대략',
+  '추적, पीछ적(追跡)': '추적, 감시, 관찰',
+  '알legedly, ~라고 주장된다(전해진다)': '~라고 주장된다(전해진다)',
   '(공기 등을) 넣어 부풀리기': '바람 넣다 / 공기 주입하다',
   '알legally': '~라고 주장된다 / ~라고 알려졌다',
   '(감정이 배제된) 냉정한': '감정 없이',
@@ -58,36 +61,68 @@ export const KO_DISPLAY_OVERRIDE: Record<string, string> = {
   allegedly: '~라고 주장된다 / ~라고 알려졌다',
   '지방 사람(지방 출신)': '지방/시골 쪽(지역)에(서)',
   '반어(법)': '조롱, 반어(법)',
+  '허락하다, اجازه하다': '허락하다',
+  '(찢어진) 찢김, 찢어진 부분': '찢김, 균열',
+  '찢어진 부분, 찢김': '찢김, 균열',
+  '찢어진 상태나 부분': '찢김, 균열',
+  '빨간색, 빨갛다': '빨간',
+  '지지자, समर्थ자': '지지자',
+  '조각, قطعة': '조각, 부분',
+  '추적하다, متابعة하다': '추적하다, 감시하다',
 }
 
 /** 영어 뜻 음성 제거 (word → 해당 단어의 meaning_en_audio_url 무음 처리, TTS 이상 발음 방지) */
 export const MUTE_MEANING_EN_AUDIO_BY_WORD: Set<string> = new Set([])
 
 /**
- * 영어 뜻: 저장된 MP3가 예전 meaning_en(예: drug cocktail)로 생성됐는데
- * 표시는 cocktail 등으로 교정된 경우 — URL 대신 Azure로 화면 문구(englishGlossLineForTts)만 읽기.
+ * Azure TTS 가 한국어 불규칙 동사 기본형을 활용형으로 잘못 읽는 단어.
+ * 이 세트에 포함된 korean_meaning 은 저장된 mp3 대신 브라우저 Web Speech API 로 읽는다.
  */
-export const PREFER_CLIENT_MEANING_EN_TTS_BY_WORD: Set<string> = new Set(['kokteli', '칵테일'])
+export const PREFER_CLIENT_KO_TTS_WORDS: Set<string> = new Set([
+  '머무르다',
+  '최근의',
+])
+
+/**
+ * 영어 뜻: 저장된 MP3가 예전 meaning_en(예: drug cocktail)로 생성됐는데
+ * 표시는 cocktail 등으로 교정된 경우 — 저장된 URL 대신 클라이언트 TTS(캐시 mp3
+ * 우선, 없으면 Web Speech)로 화면 문구(englishGlossLineForTts)만 읽기.
+ */
+export const PREFER_CLIENT_MEANING_EN_TTS_BY_WORD: Set<string> = new Set([])
 
 /** 단어별 한국어 뜻 표기 교정 (word → 교정된 meaning_ko) */
 export const KO_DISPLAY_OVERRIDE_BY_WORD: Record<string, string> = {
   nyeupe: '흰색(의)',
+  nyekundu: '빨간',
+  mfuasi: '지지자',
+  kipande: '조각, 부분',
+  kufuatilia: '추적하다, 감시하다',
   kahawia: '갈색(의)',
   dhahabu: '금; 금색/금빛(의)',
   'kituo cha kuhifadhi': '보관소, 보호소(유기견)',
   hasa: '특히',
+  bayana: '뚜렷하게, 분명히',
+  takribani: '대략',
+  ufuatiliaji: '추적, 감시, 관찰',
+  inadaiwa: '~라고 주장된다(전해진다)',
   ushirikishwaji: '포용, 포함',
   kiti: '의자',
   kuweka: '(무엇을) 놓다, 세팅하다, 설정하다',
   kipofu: '시각장애인, 맹인',
   kutabiri: '예측하다, 예언하다',
   mtarajiwa: '잠재의, 예비의',
+  mchaniko: '찢김, 균열',
+  mpasuko: '찢김, 균열',
   tupu: '멍한, 텅빈',
+  찢어짐: '찢김, 균열',
   Machi: '3월',
 }
 
 /** 영어 뜻 표기 교정 (DB meaning_en → 교정된 표기) */
 export const EN_DISPLAY_OVERRIDE: Record<string, string> = {
+  'sixty; one\'s sixties': 'sixty',
+  'sixty; one\u2019s sixties': 'sixty',
+  'confess; admit': 'confess or admit',
   about: 'around',
   breach: 'violate',
   comic: 'comedian',
@@ -115,9 +150,7 @@ export const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   venture: 'dare',
   float: 'buoy',
   buck: 'male rabbit',
-  male: 'male rabbit',
   pack: 'package',
-  'to be late': 'late',
   cut: 'crop',
   cute: 'be cute',
   'to settle': 'calm down',
@@ -148,10 +181,11 @@ export const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   'to desert': 'abandon',
   'rational; logical': 'rational',
   bake: 'harden, thicken',
-  leap: 'jump at/on, pounce on',
+  leap: 'jump at or on; pounce on',
   'to staff': 'hire',
   'to be controversial': 'controversial',
   deadly: 'dangerous',
+  due: 'scheduled',
   discourage: 'be discouraged',
   get: 'persuade',
   practitioner: 'religious person, believer',
@@ -204,6 +238,7 @@ export const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   'creep/crawl': 'creep, crawl',
   'remaining/balance': 'remaining, balance',
   'nominate/appoint': 'nominate, appoint',
+  'adopt/approve': 'adopt, approve',
   'to nominate/appoint': 'to nominate, appoint',
   'engaged/busy': 'engaged, busy',
   'make/force': 'make, force',
@@ -299,14 +334,15 @@ export const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   'seeker; a device/program/person that searches for a target': 'explorer',
   'coal/charcoal': 'coal, charcoal',
   'much/many': 'much, many',
-  ever: 'on earth',
   'on earth': 'on earth',
   'to exercise': 'used to',
   'to very deep in meaning': 'have a deep meaning',
   'to make': 'empower',
   'to feasible': 'be feasible',
-  'future / later': 'future, later',
+  'apparent/obvious': 'apparent, obvious',
   'to very clear and obvious': 'be clear and obvious',
+  'future / later': 'later',
+  'future, later': 'later',
   'to urgent and in great need': 'be urgent',
   'to work': 'operate',
   'to say': 'intend',
@@ -338,10 +374,39 @@ export const EN_DISPLAY_OVERRIDE: Record<string, string> = {
   'graphic': 'vivid',
   'eligible; qualified/entitled': 'eligible; qualified, entitled',
   'extensively; broadly/thoroughly': 'extensively; broadly, thoroughly',
+  'a drag; something boring/annoying': 'a drag; something boring or annoying',
+  'cater; provide food/service for an event': 'cater; provide food or service for an event',
+  'come out to meet / to pick up': 'come out to meet, to pick up',
+  'cue; a stick used to hit the ball in billiards/pool': 'cue; a stick used to hit the ball in billiards or pool',
+  'divine; predict/foretell': 'divine; predict, foretell',
+  'dub; give a nickname/title': 'dub; give a nickname or title',
+  'empirical; based on observation/experiment': 'empirical; based on observation or experiment',
+  'fishing; the activity/industry of catching fish': 'fishing; the activity or industry of catching fish',
+  'forward / pass along': 'forward, pass along',
+  'grade/mark': 'grade, mark',
+  'her; him/her': 'her; him or her',
+  'insertion; adding/putting in': 'insertion; adding, putting in',
+  'jam; shove/pack in': 'jam; shove, pack in',
+  'legitimate; legal/valid': 'legitimate; legal, valid',
+  'mount; attach onto a backing/support': 'mount; attach onto a backing or support',
+  'nation; a country/state': 'nation',
+  'nation; a country or state': 'nation',
+  'peasant; poor farm worker/farmer': 'peasant; poor farm worker or farmer',
+  'physical; relating to the body/material': 'physical; relating to the body or material',
+  'pole; end': 'pole, end',
+  'stress someone; make someone tense/worried': 'stress someone; make someone tense or worried',
+  'stunning; extremely beautiful/impressive': 'stunning; extremely beautiful or impressive',
+  'supportive; agreeing with and backing someone/something': 'supportive; agreeing with and backing someone or something',
+  'tactical; relating to tactics/strategy': 'tactical; relating to tactics or strategy',
+  'task/assign': 'task, assign',
+  'turn; change direction/position': 'turn; change direction or position',
+  'turnout; junction/turn-off point': 'turnout; junction, turn-off point',
+  'worthwhile; worth the time/effort': 'worthwhile; worth the time or effort',
 }
 
 /** 단어별 영어 뜻 표기 교정 (word → 교정된 meaning_en) */
 export const EN_DISPLAY_OVERRIDE_BY_WORD: Record<string, string> = {
+  baadaye: 'later',
   '원래': 'originally',
   '진정시키다': 'calm',
   '의식': 'a ritual',
@@ -390,6 +455,11 @@ export const EN_DISPLAY_OVERRIDE_BY_WORD: Record<string, string> = {
   ngazi: 'stair, stairs',
   inaripotiwa: 'beam',
   hasa: 'especially',
+  jamu: 'jam',
+  sitini: 'sixty',
+  kiri: 'confess or admit',
+  kumtembelea: 'visit',
+  kuhama: 'to move',
   '방과 후 남기': 'after school',
   사소하다: 'trivial',
   광범위하다: 'extensive',
@@ -434,7 +504,11 @@ export const EN_DISPLAY_OVERRIDE_BY_WORD: Record<string, string> = {
   programu: 'program',
   편성: 'programming schedule',
   '프로그램 편성': 'programming schedule',
-  mpangilio: 'programming schedule',
+  '예정된': 'scheduled',
+  '귀여운': 'cute',
+  '옷': 'outfit',
+  '하나님': 'God',
+  '신': 'God',
   zipu: 'zipper',
 }
 
@@ -662,6 +736,30 @@ export const EXAMPLE_DISPLAY_OVERRIDE: Record<string, { text: string; pron?: str
     text: '화장이 진해서 오히려 촌스러워 보일 수 있어요.',
     pron: 'hwajangi jinhaeseo ohiryeo chonseureowo boil su isseoyo.',
   },
+  '그는 내 사과를 받아들이다.': {
+    text: '그는 내 사과를 받아들였다.',
+    pron: 'geuneun nae sagwareul badadeuryeotda.',
+  },
+  '우리는 항상 정직하게 행동하다.': {
+    text: '우리는 항상 정직하게 행동한다.',
+    pron: 'urineun hangsang jeongjikhage haengdonghanda.',
+  },
+  '그는 오랜 꿈을 달성하다.': {
+    text: '그는 오랜 꿈을 달성했다.',
+    pron: 'geuneun oraen kkumeul dalseonghaetda.',
+  },
+  '많은 사람들은 신에게 기도합니다.': {
+    text: '많은 사람들은 하나님께 기도합니다.',
+    pron: 'maneun saramdeureun hananimkke gidohamnida.',
+  },
+  '많은 사람들은 하나님에게 기도합니다.': {
+    text: '많은 사람들은 하나님께 기도합니다.',
+    pron: 'maneun saramdeureun hananimkke gidohamnida.',
+  },
+  '나는 저녁을 준비할게요. 그동안 너는 방을 정리해 주세요.': {
+    text: '나는 저녁을 준비할게. 그동안 너는 방을 정리해 줘.',
+    pron: 'naneun jeonyeogeul junbihalge. geudongan neoneun bangeul jeongnihae jwo.',
+  },
 }
 
 /** 예문 한국어 번역 표기 교정 (DB 원본 → 교정된 번역) */
@@ -682,12 +780,20 @@ export const EXAMPLE_TRANSLATION_KO_OVERRIDE: Record<string, string> = {
   '버스에 좌석이 마흔넷 개 있어요.': '버스에 좌석이 마흔네 개 있어요.',
   '여행은 마흔다섯 분 걸릴 거예요.': '여행은 사십오 분 걸릴 거예요.',
   '의사 말로는 급성의 위염이래요.': '의사 말로는 급성 위염이래요.',
+  '그는 내 사과를 받아들이다.': '그는 내 사과를 받아들였다.',
+  '우리는 항상 정직하게 행동하다.': '우리는 항상 정직하게 행동한다.',
+  '그는 오랜 꿈을 달성하다.': '그는 오랜 꿈을 달성했다.',
+  '많은 사람들은 신에게 기도합니다.': '많은 사람들은 하나님께 기도합니다.',
+  '많은 사람들은 하나님에게 기도합니다.': '많은 사람들은 하나님께 기도합니다.',
+  '나는 저녁을 준비할게요. 그동안 너는 방을 정리해 주세요.': '나는 저녁을 준비할게. 그동안 너는 방을 정리해 줘.',
 }
 
 /** 예문 영어 번역 표기 교정 (DB 원본 → 교정된 번역) */
 export const EXAMPLE_TRANSLATION_EN_OVERRIDE: Record<string, string> = {
   'That movie is very appealing.': 'That movie is very interesting.',
   'Exile forced him to live far from his family.': 'The transfer forced him/her to live far from his/her family.',
+  'He accepts my apology.': 'He accepted my apology.',
+  'He achieves his long-time dream.': 'He achieved his long-time dream.',
 }
 
 /** 단어별 예문 번역 교정 (word → { sw?, ko?, en?, koPron? }) */
@@ -983,6 +1089,7 @@ export const WORD_DISPLAY_OVERRIDE: Record<string, { word: string; pron: string 
   관례적이다: { word: '관례적으로', pron: 'gwanryejeogeuro' },
   안다: { word: '안다', pron: 'antta' },
   용돈: { word: '용돈', pron: 'yongtton' },
+  '옷을 입은': { word: '(옷을) 입은', pron: 'oseul ibeun' },
 }
 
 /** 예문별 영어 뜻 표기 교정 (예문이 동일한데 뜻이 다른 경우) */

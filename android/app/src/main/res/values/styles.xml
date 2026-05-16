@@ -1,24 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
+    <!-- Base application theme. ActionBar/Title 자동 생성을 막기 위해 NoActionBar parent 사용.
+         이전엔 Light.DarkActionBar 였는데, AndroidManifest의 <application android:theme> 이 이걸 그대로
+         쓰고 MainActivity 의 NoActionBarLaunch 가 splash 이후 명확히 NoActionBar 로 전환되지 않으면
+         흰 ActionBar 배너가 상단에 표시되는 문제가 있었다. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowActionBarOverlay">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">@color/colorPrimary</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">always</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- ActionBar / Title 모두 강제 차단 (AppCompat + framework 양쪽 동시 명시) -->
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">@null</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowActionBarOverlay">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <!-- splash 후 windowBackground=@null 이면 status bar/navigation bar 영역이
+             시스템 기본(라이트모드=흰색)으로 노출되어 상단에 흰 배너처럼 보임.
+             colorPrimary(#070a12) 다크 배경으로 명시하여 가려준다. -->
+        <item name="android:windowBackground">@color/colorPrimary</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">always</item>
     </style>
 
-
+    <!-- 런치 테마: 단색 배경 (splash drawable 대신) → 콜드 스타트 속도 개선 -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowBackground">@color/splash_background</item>
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">always</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

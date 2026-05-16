@@ -25,14 +25,19 @@ type Draft = {
   note: string
 }
 
+function isInternalTag(tg: string): boolean {
+  return tg.startsWith('oxford:') || tg.startsWith('ai:')
+}
+
 function toDraft(item?: VocabItem): Draft {
+  const visibleTags = (item?.tags ?? []).filter((tg) => !isInternalTag(tg))
   return {
     deckId: item?.deckId ?? '',
     sw: item?.sw ?? '',
     ko: item?.ko ?? '',
     en: item?.en ?? '',
     pos: item?.pos ?? '',
-    tags: item?.tags?.join(', ') ?? '',
+    tags: visibleTags.join(', '),
     example: item?.example ?? '',
     exampleKo: item?.exampleKo ?? '',
     exampleEn: item?.exampleEn ?? '',
@@ -96,7 +101,10 @@ export function WordbookScreen({
     const set = new Set<string>()
     for (const x of items) {
       const tags = x?.tags ?? []
-      for (const tg of tags) set.add(tg)
+      for (const tg of tags) {
+        if (tg.startsWith('oxford:') || tg.startsWith('ai:')) continue
+        set.add(tg)
+      }
     }
     return [allLabel, ...Array.from(set).sort((a, b) => a.localeCompare(b, lang === 'sw' ? 'en' : 'ko'))]
   }, [items, allLabel, lang])
@@ -148,13 +156,14 @@ export function WordbookScreen({
       toast({ title: t('enterKorean', lang) })
       return
     }
+    const preservedInternalTags = (editing?.tags ?? []).filter(isInternalTag)
     const payload = {
       deckId: fixedDeckId ?? draft.deckId,
       sw: draft.sw.trim(),
       ko: draft.ko.trim(),
       en: draft.en.trim() || undefined,
       pos: draft.pos.trim() || undefined,
-      tags: parseTags(draft.tags),
+      tags: [...preservedInternalTags, ...parseTags(draft.tags)],
       example: draft.example.trim() || undefined,
       exampleKo: draft.exampleKo.trim() || undefined,
       exampleEn: draft.exampleEn.trim() || undefined,
@@ -247,44 +256,61 @@ export function WordbookScreen({
           const tags = x.tags ?? []
           return (
             <div key={x.id} className="rounded-3xl p-5 app-card backdrop-blur">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-2xl font-extrabold text-white">{x.sw ?? ''}</div>
-                  </div>
-                  <div className="mt-2 text-base font-bold text-white/95">{x.ko ?? ''}</div>
-                  {showEnglish && x.en ? (
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-extrabold text-white">{x.sw ?? ''}</div>
+                </div>
+                <div className="mt-2 text-base font-bold text-white/95">{x.ko ?? ''}</div>
+                {(() => {
+                  const isAiSaved = (x.tags ?? []).some((tg) => tg.startsWith('ai:'))
+                  const enText = x.en?.trim() ?? ''
+                  const showEn =
+                    showEnglish &&
+                    enText &&
+                    enText !== x.sw?.trim() &&
+                    enText !== x.ko?.trim() &&
+                    !isAiSaved
+                  return showEn ? (
                     <div className="mt-1 text-sm font-semibold text-white/70">
-                      {applyEnOverride(x.en.trim(), x.sw) ?? x.en}
+                      {applyEnOverride(enText, x.sw) ?? x.en}
                     </div>
-                  ) : null}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => openEdit(x)}>
-                    {lang === 'sw' ? 'Hariri' : '수정'}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => del(x)}>
-                    {t('delete', lang)}
-                  </Button>
-                </div>
+                  ) : null
+                })()}
               </div>
 
-              {tags.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {tags.map((tg) => (
-                    <Badge key={tg}>{tg}</Badge>
-                  ))}
-                </div>
-              ) : null}
+              {(() => {
+                const visibleTags = tags.filter(
+                  (tg) => !tg.startsWith('oxford:') && !tg.startsWith('ai:'),
+                )
+                return visibleTags.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {visibleTags.map((tg) => (
+                      <Badge key={tg}>{tg}</Badge>
+                    ))}
+                  </div>
+                ) : null
+              })()}
 
               {x.example ? (
                 <div className="mt-3 space-y-1">
                   <div className="text-sm font-semibold text-white/85">{exampleLabel}: {x.example}</div>
-                  {x.exampleKo ? <div className="text-xs font-semibold text-white/70 pl-2">→ {x.exampleKo}</div> : null}
-                  {x.exampleEn ? <div className="text-xs font-semibold text-white/60 pl-2">→ {x.exampleEn}</div> : null}
+                  {x.exampleKo && x.exampleKo.trim() !== x.example.trim() ? (
+                    <div className="text-xs font-semibold text-white/70 pl-2">→ {x.exampleKo}</div>
+                  ) : null}
+                  {x.exampleEn && x.exampleEn.trim() !== x.example.trim() ? (
+                    <div className="text-xs font-semibold text-white/60 pl-2">→ {x.exampleEn}</div>
+                  ) : null}
                 </div>
               ) : null}
               {x.note ? <div className="mt-1 text-xs font-semibold text-white/65">{noteLabel}: {x.note}</div> : null}
+              <div className="mt-3 flex justify-end gap-2 pt-2 border-t border-white/5">
+                <Button variant="secondary" size="sm" onClick={() => openEdit(x)}>
+                  {lang === 'sw' ? 'Hariri' : '수정'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => del(x)}>
+                  {t('delete', lang)}
+                </Button>
+              </div>
             </div>
           )
         })}

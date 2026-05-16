@@ -12,7 +12,8 @@ dotenv.config()
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY!
-const GCP_VOICE_EN = process.env.GCP_TTS_EN_VOICE || 'en-US-Wavenet-D'
+// 기본은 여성 보이스 (Wavenet-D 는 남성이라 의도와 달랐음 → Wavenet-F: Female)
+const GCP_VOICE_EN = process.env.GCP_TTS_EN_VOICE || 'en-US-Wavenet-F'
 const GCP_TTS_SPEED = 0.9
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)

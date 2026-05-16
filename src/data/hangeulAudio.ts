@@ -354,7 +354,6 @@ export const HANGEUL_AUDIO: Record<string, string> = {
   "트": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/0a9d4934f77d0a18.mp3",
   "틔": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/7088660bc6526f68.mp3?v=1777439234040",
   "티": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/4d705fe18cbddd5b.mp3",
-  "티읕": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/518b43090d107b39.mp3?v=1777719383278",
   "파": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/4c537d1314627e3c.mp3?v=1777381623393",
   "파도": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/0f3bf77d6153a8a7.mp3",
   "패": "https://msjyboyuukdttwnskjsm.supabase.co/storage/v1/object/public/vocabaudio/hangeul/36260e2ce5f3e557.mp3",

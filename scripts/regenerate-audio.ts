@@ -17,9 +17,11 @@ dotenv.config()
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY
-const GCP_VOICE_KO = process.env.GCP_TTS_KO_VOICE || 'ko-KR-Wavenet-D'
-const GCP_VOICE_SW = process.env.GCP_TTS_SW_VOICE || 'sw-TZ-Standard-A' // sw-KE 일부 지역에서 미지원 → sw-TZ 기본
-const GCP_VOICE_EN = process.env.GCP_TTS_EN_VOICE || 'en-US-Wavenet-D'
+// 기본 보이스는 모두 "여성" 으로 통일 (Wavenet-D 는 남성이라 의도와 달랐음)
+//   ko: Wavenet-B (Female)  /  sw: Standard-A (Female)  /  en: Wavenet-F (Female)
+const GCP_VOICE_KO = process.env.GCP_TTS_KO_VOICE || 'ko-KR-Wavenet-B'
+const GCP_VOICE_SW = process.env.GCP_TTS_SW_VOICE || 'sw-TZ-Standard-A'
+const GCP_VOICE_EN = process.env.GCP_TTS_EN_VOICE || 'en-US-Wavenet-F'
 const GCP_TTS_SPEED = Number(process.env.GCP_TTS_SPEED ?? '1') || 1
 const GCP_TTS_SPEED_EXAMPLE_KO = Number(process.env.GCP_TTS_SPEED_EXAMPLE_KO ?? '0.85') || 0.85
 const GCP_TTS_SPEED_EXAMPLE_SW = Number(process.env.GCP_TTS_SPEED_EXAMPLE_SW ?? '0.9') || 0.9

@@ -8,9 +8,15 @@ import {
   canTranslate,
   grantTranslateBonus,
   hasGeminiApi,
+  warmupTranslate,
   type TranslationResult,
 } from '../lib/translate'
-import { showRewardedAd } from '../lib/admob'
+import {
+  showRewardedAd,
+  canAccessDictionary,
+  grantDictionaryAccess,
+  getDictionaryAccessRemainingTime,
+} from '../lib/admob'
 import { hasCachedTts, speakWithFreeFallback } from '../lib/ttsCache'
 import { englishGlossLineForTts } from '../lib/meaningEnTts'
 import type { Action } from '../app/state'
@@ -61,9 +67,9 @@ function DetectedLangBadge({ text, lang }: { text: string; lang: Lang }) {
   if (!text.trim()) return null
   const detected = detectLang(text)
   const labels: Record<string, Record<Lang, string>> = {
-    sw: { ko: '🇰🇪 스와힐리어', sw: '🇰🇪 Kiswahili' },
-    ko: { ko: '🇰🇷 한국어', sw: '🇰🇷 Kikorea' },
-    en: { ko: '🇬🇧 영어', sw: '🇬🇧 Kiingereza' },
+    sw: { ko: '🇰🇪 스와힐리어', sw: '🇰🇪 Kiswahili', en: '🇰🇪 Swahili' },
+    ko: { ko: '🇰🇷 한국어', sw: '🇰🇷 Kikorea', en: '🇰🇷 Korean' },
+    en: { ko: '🇬🇧 영어', sw: '🇬🇧 Kiingereza', en: '🇬🇧 English' },
   }
   return (
     <span className="text-[10px] font-bold text-white/30">
@@ -147,12 +153,12 @@ function ResultCard({
   isSaved?: boolean
 }) {
   const posLabels: Record<string, Record<Lang, string>> = {
-    noun: { ko: '명사', sw: 'Nomino' },
-    verb: { ko: '동사', sw: 'Kitenzi' },
-    adjective: { ko: '형용사', sw: 'Kivumishi' },
-    adverb: { ko: '부사', sw: 'Kielezi' },
-    phrase: { ko: '구문', sw: 'Kifungu' },
-    other: { ko: '기타', sw: 'Nyingine' },
+    noun: { ko: '명사', sw: 'Nomino', en: 'Noun' },
+    verb: { ko: '동사', sw: 'Kitenzi', en: 'Verb' },
+    adjective: { ko: '형용사', sw: 'Kivumishi', en: 'Adjective' },
+    adverb: { ko: '부사', sw: 'Kielezi', en: 'Adverb' },
+    phrase: { ko: '구문', sw: 'Kifungu', en: 'Phrase' },
+    other: { ko: '기타', sw: 'Nyingine', en: 'Other' },
   }
 
   const langBadgeColors: Record<string, string> = {
@@ -161,9 +167,9 @@ function ResultCard({
     en: 'bg-amber-500/20 text-amber-400',
   }
   const langCodes: Record<string, Record<Lang, string>> = {
-    sw: { ko: 'SW', sw: 'KSW' },
-    ko: { ko: 'KO', sw: 'KKO' },
-    en: { ko: 'EN', sw: 'EN' },
+    sw: { ko: 'SW', sw: 'KSW', en: 'SW' },
+    ko: { ko: 'KO', sw: 'KKO', en: 'KO' },
+    en: { ko: 'EN', sw: 'EN', en: 'EN' },
   }
 
   function LangBadge({ code }: { code: string }) {
@@ -314,6 +320,9 @@ export function DictionaryScreen({
   lang: Lang
   decks: Deck[]
   dispatch: (a: Action) => void
+  /** 라우팅용 (App.tsx에서 분기) - 본 컴포넌트는 사용하지 않음 */
+  nativeLang?: 'sw' | 'ko' | 'en'
+  targetLang?: 'sw' | 'ko' | 'en'
 }) {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -324,6 +333,12 @@ export function DictionaryScreen({
   const [savedWords, setSavedWords] = useState<Set<string>>(new Set())
   const [, setRefresh] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // 사전 접근 게이트: 보상형 광고 시청 후 30분간 접근 가능
+  const [hasAccess, setHasAccess] = useState(() => canAccessDictionary())
+  const [accessAdLoading, setAccessAdLoading] = useState(false)
+  const [accessAdError, setAccessAdError] = useState<string | null>(null)
+  const [accessRemaining, setAccessRemaining] = useState(getDictionaryAccessRemainingTime())
 
   const getDictionaryDeckId = useCallback((): string => {
     const existing = decks.find((d) => d.name === DICTIONARY_DECK_NAME)
@@ -347,8 +362,63 @@ export function DictionaryScreen({
   }, [result, getDictionaryDeckId, dispatch, savedWords])
 
   useEffect(() => {
+    if (!hasAccess) return
     inputRef.current?.focus()
-  }, [])
+    // 사용자가 검색어를 타이핑하는 동안 백그라운드로 Edge Function 컨테이너를 깨워둔다.
+    // (Gemini API 비호출, 사용량/한도 영향 없음)
+    warmupTranslate()
+  }, [hasAccess])
+
+  // 입력이 시작되면 한 번 더 워밍업 시도 (TTL 만료 대비, 내부적으로 dedup 됨).
+  useEffect(() => {
+    if (!hasAccess) return
+    if (query.trim().length >= 1) warmupTranslate()
+  }, [query, hasAccess])
+
+  // 접근 권한 남은 시간을 1분마다 갱신, 만료 시 게이트로 복귀
+  useEffect(() => {
+    if (!hasAccess) return
+    const update = () => {
+      const remaining = getDictionaryAccessRemainingTime()
+      setAccessRemaining(remaining)
+      if (remaining <= 0 && !canAccessDictionary()) {
+        setHasAccess(false)
+      }
+    }
+    update()
+    const interval = window.setInterval(update, 60_000)
+    return () => window.clearInterval(interval)
+  }, [hasAccess])
+
+  const handleWatchAccessAd = useCallback(async () => {
+    setAccessAdLoading(true)
+    setAccessAdError(null)
+    try {
+      const success = await showRewardedAd()
+      if (success) {
+        grantDictionaryAccess()
+        setHasAccess(true)
+        setAccessRemaining(getDictionaryAccessRemainingTime())
+        // 진입 직후 입력창 포커스를 위해 한 프레임 뒤 호출
+        window.setTimeout(() => inputRef.current?.focus(), 100)
+      } else {
+        setAccessAdError(
+          lang === 'ko'
+            ? '광고를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'
+            : 'Tangazo halikupakuliwa. Tafadhali jaribu tena baadaye.',
+        )
+      }
+    } catch (err) {
+      console.error('[Dictionary] 접근 광고 표시 실패:', err)
+      setAccessAdError(
+        lang === 'ko'
+          ? '광고 표시 중 오류가 발생했어요.'
+          : 'Hitilafu wakati wa kuonyesha tangazo.',
+      )
+    } finally {
+      setAccessAdLoading(false)
+    }
+  }, [lang])
 
   const doSearch = useCallback(async () => {
     const trimmed = query.trim()
@@ -429,6 +499,72 @@ export function DictionaryScreen({
     setResult(item)
   }
 
+  // ─── 사전 접근 게이트 ──────────────────────────────
+  if (!hasAccess) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-extrabold text-white">{t('dictionaryTitle', lang)}</h2>
+            <p className="text-xs text-white/50">
+              {lang === 'ko' ? '스와힐리어, 한국어, 영어 사전' : 'Kamusi ya Kiswahili, Kikorea, Kiingereza'}
+            </p>
+          </div>
+        </div>
+
+        <div className="app-card rounded-3xl p-6 text-center space-y-4">
+          <div className="text-5xl animate-bounce">🎬</div>
+          <h3 className="text-xl font-extrabold text-white">
+            {lang === 'ko' ? '사전을 사용하려면 광고를 시청하세요' : 'Tazama tangazo ili kutumia kamusi'}
+          </h3>
+          <p className="text-sm text-white/70 leading-relaxed">
+            {lang === 'ko'
+              ? '짧은 보상형 광고를 시청하면 30분간 사전 기능을 자유롭게 사용할 수 있어요.'
+              : 'Tazama tangazo fupi ili kutumia kamusi bila vikwazo kwa dakika 30.'}
+          </p>
+
+          {accessAdError && (
+            <div className="rounded-xl bg-[rgba(var(--orange),0.15)] p-3 text-xs text-[rgb(var(--orange))]">
+              {accessAdError}
+            </div>
+          )}
+
+          <button
+            onClick={handleWatchAccessAd}
+            disabled={accessAdLoading}
+            className={cn(
+              'w-full h-14 rounded-2xl font-black text-lg tracking-wide text-white transition-all',
+              'bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500',
+              'shadow-[0_8px_32px_rgba(34,197,94,0.5)] ring-2 ring-green-400/50',
+              'hover:scale-[1.02] hover:shadow-[0_12px_40px_rgba(34,197,94,0.6)]',
+              'active:scale-[0.98]',
+              accessAdLoading && 'opacity-70 cursor-wait',
+            )}
+            style={{ textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
+          >
+            {accessAdLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="animate-spin">⏳</span>
+                {lang === 'ko' ? '로딩 중...' : 'Inapakia...'}
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <span className="text-xl">▶</span>
+                {lang === 'ko' ? '광고 보고 시작' : 'Tazama na uanze'}
+              </span>
+            )}
+          </button>
+
+          <p className="text-[11px] text-white/40 leading-relaxed">
+            {lang === 'ko'
+              ? '광고 시청 후 30분간 사전을 자유롭게 이용할 수 있어요. 시간이 지나면 다시 광고를 시청해야 해요.'
+              : 'Baada ya tangazo, unaweza kutumia kamusi kwa dakika 30. Baada ya muda huo utahitaji kutazama tangazo tena.'}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* 헤더 */}
@@ -441,6 +577,16 @@ export function DictionaryScreen({
         </div>
         <UsageBadge lang={lang} />
       </div>
+
+      {/* 사전 접근 권한 남은 시간 (네이티브 환경) */}
+      {accessRemaining > 0 && (
+        <div className="rounded-xl border border-[rgb(var(--green))]/30 bg-[rgb(var(--green))]/10 px-3 py-2 text-xs text-white/80 text-center">
+          <span className="text-[rgb(var(--green))]">✓</span>{' '}
+          {lang === 'ko'
+            ? `광고 없이 사전 사용 가능: ${Math.ceil(accessRemaining / 60000)}분 남음`
+            : `Muda wa kamusi bila tangazo: ${Math.ceil(accessRemaining / 60000)} dakika`}
+        </div>
+      )}
 
       {/* 검색 입력 */}
       <div className="flex gap-2">
@@ -569,10 +715,10 @@ export function DictionaryScreen({
           </p>
           <div className="flex flex-wrap gap-1.5">
             {history.map((item) => {
-              const codes: Record<string, Record<'ko' | 'sw', string>> = {
-                sw: { ko: 'SW', sw: 'KSW' },
-                ko: { ko: 'KO', sw: 'KKO' },
-                en: { ko: 'EN', sw: 'EN' },
+              const codes: Record<string, Record<Lang, string>> = {
+                sw: { ko: 'SW', sw: 'KSW', en: 'SW' },
+                ko: { ko: 'KO', sw: 'KKO', en: 'KO' },
+                en: { ko: 'EN', sw: 'EN', en: 'EN' },
               }
               return (
                 <button

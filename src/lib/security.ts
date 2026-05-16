@@ -103,8 +103,6 @@ export function isSafeUrl(url: string): boolean {
     'doubleclick.net',
     'googlesyndication.com',
     'googleadservices.com',
-    'tts.speech.microsoft.com',
-    'microsoft.com',
     'ip-api.com',
     'ipapi.co',
   ]

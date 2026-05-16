@@ -13,6 +13,7 @@ const AD_INTERVAL_MS = 4 * 60 * 1000
 // 강제 노출(중요한 자연스러운 휴식 시점)에는 살짝 더 짧은 간격 적용
 const AD_INTERVAL_BREAKPOINT_MS = 2 * 60 * 1000
 const QUIZ_ACCESS_DURATION_MS = 30 * 60 * 1000 // 보상형 광고 시청 후 30분간 퀴즈 가능
+const DICTIONARY_ACCESS_DURATION_MS = 30 * 60 * 1000 // 보상형 광고 시청 후 30분간 사전 가능
 
 // 광고 prepare를 노출 예정 시각보다 얼마나 일찍 할지 (60초 전)
 // → 매치율 개선을 위해 just-in-time 로딩
@@ -78,6 +79,8 @@ let currentAdPersonalization: AdPersonalization = 'non_personalized'
 
 // 퀴즈 접근 권한 상태 (localStorage에 저장)
 const QUIZ_ACCESS_KEY = 'quiz_access_until'
+// 사전 접근 권한 상태 (localStorage에 저장)
+const DICTIONARY_ACCESS_KEY = 'dictionary_access_until'
 
 // Capacitor 환경인지 확인
 function isCapacitorNative(): boolean {
@@ -119,6 +122,44 @@ export function grantQuizAccess(): void {
   const until = Date.now() + QUIZ_ACCESS_DURATION_MS
   localStorage.setItem(QUIZ_ACCESS_KEY, until.toString())
   console.log('[AdMob] 퀴즈 접근 권한 부여됨 (30분)')
+}
+
+/**
+ * 사전 접근 가능 여부 확인
+ * - 웹 환경에서는 항상 true (개발/테스트 편의)
+ * - 네이티브 환경에서는 보상형 광고 시청 후 30분간 접근 가능
+ */
+export function canAccessDictionary(): boolean {
+  if (!isCapacitorNative()) {
+    return true
+  }
+
+  const accessUntil = localStorage.getItem(DICTIONARY_ACCESS_KEY)
+  if (!accessUntil) return false
+
+  const until = parseInt(accessUntil, 10)
+  return Date.now() < until
+}
+
+/**
+ * 사전 접근 권한 남은 시간 (밀리초)
+ */
+export function getDictionaryAccessRemainingTime(): number {
+  const accessUntil = localStorage.getItem(DICTIONARY_ACCESS_KEY)
+  if (!accessUntil) return 0
+
+  const until = parseInt(accessUntil, 10)
+  const remaining = until - Date.now()
+  return remaining > 0 ? remaining : 0
+}
+
+/**
+ * 사전 접근 권한 부여 (30분)
+ */
+export function grantDictionaryAccess(): void {
+  const until = Date.now() + DICTIONARY_ACCESS_DURATION_MS
+  localStorage.setItem(DICTIONARY_ACCESS_KEY, until.toString())
+  console.log('[AdMob] 사전 접근 권한 부여됨 (30분)')
 }
 
 /**

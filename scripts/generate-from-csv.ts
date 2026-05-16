@@ -36,9 +36,9 @@ async function gcpSynthesizeSpeech(
   opts?: { voiceName?: string; speakingRate?: number }
 ): Promise<{ audio: ArrayBuffer; voiceName: string; rate: number }> {
   const VOICE_MAP: Record<TTLLang, string> = {
-    ko: process.env.VITE_GCP_TTS_KO_VOICE || 'ko-KR-Wavenet-D',
+    ko: process.env.VITE_GCP_TTS_KO_VOICE || 'ko-KR-Wavenet-B',
     sw: process.env.VITE_GCP_TTS_SW_VOICE || 'sw-KE-Standard-A',
-    en: process.env.VITE_GCP_TTS_EN_VOICE || 'en-US-Wavenet-D',
+    en: process.env.VITE_GCP_TTS_EN_VOICE || 'en-US-Wavenet-F',
   }
   const voiceName = opts?.voiceName || VOICE_MAP[language] || VOICE_MAP.en
   const speakingRate =

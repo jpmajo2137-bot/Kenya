@@ -4,10 +4,11 @@
  */
 
 const DB_NAME = 'k-kiswahili-offline'
-const DB_VERSION = 3
+const DB_VERSION = 4
 const STORE_NAME = 'vocab'
 const META_STORE = 'meta'
 const MEDIA_STORE = 'media'
+const OXFORD_STORE = 'oxford_vocab'
 
 type Mode = 'sw' | 'ko'
 
@@ -80,10 +81,135 @@ function getDB(): Promise<IDBDatabase> {
         const mediaStore = db.createObjectStore(MEDIA_STORE, { keyPath: 'url' })
         mediaStore.createIndex('type', 'type', { unique: false })
       }
+
+      // Oxford 5000 단어 저장소 (en-ko / ko-en 버전 공용)
+      if (!db.objectStoreNames.contains(OXFORD_STORE)) {
+        const oxStore = db.createObjectStore(OXFORD_STORE, { keyPath: 'id' })
+        oxStore.createIndex('level', 'level', { unique: false })
+        oxStore.createIndex('order_index', 'order_index', { unique: false })
+      }
     }
   })
 
   return dbPromise
+}
+
+export interface CachedOxfordVocab {
+  id: string
+  word: string
+  korean_meaning: string
+  level: string | null
+  pos: string | null
+  english_example: string | null
+  korean_example: string | null
+  word_audio_url: string | null
+  meaning_audio_url: string | null
+  english_example_audio_url: string | null
+  korean_example_audio_url: string | null
+  image_url: string | null
+  order_index: number | null
+  category: string | null
+  difficulty: number | null
+  // KO-EN: 영어 단어의 한글 발음 가이드 (숫자 단어 한정)
+  word_pron_ko: string | null
+  created_at: string
+}
+
+/**
+ * Oxford 5000 캐시 단어 조회 (level/category 필터, Day 페이지네이션)
+ */
+export async function getOxfordFromCache(
+  level?: string,
+  dayNumber?: number,
+  wordsPerDay: number = 40,
+  category?: string,
+): Promise<CachedOxfordVocab[]> {
+  const db = await getDB()
+  const tx = db.transaction(OXFORD_STORE, 'readonly')
+  const store = tx.objectStore(OXFORD_STORE)
+  return new Promise((resolve, reject) => {
+    const request: IDBRequest = store.getAll()
+    request.onsuccess = () => {
+      let data = request.result as CachedOxfordVocab[]
+      if (level) data = data.filter((d) => d.level === level)
+      if (category) data = data.filter((d) => d.category === category)
+      data.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+      if (dayNumber) {
+        const start = (dayNumber - 1) * wordsPerDay
+        data = data.slice(start, start + wordsPerDay)
+      }
+      resolve(data)
+    }
+    request.onerror = () => reject(request.error)
+  })
+}
+
+/**
+ * Oxford 5000 캐시 단어 개수 (level/category 필터)
+ */
+export async function getOxfordCacheCount(
+  level?: string,
+  category?: string,
+): Promise<number> {
+  const db = await getDB()
+  const tx = db.transaction(OXFORD_STORE, 'readonly')
+  const store = tx.objectStore(OXFORD_STORE)
+  return new Promise((resolve, reject) => {
+    if (!level && !category) {
+      const request = store.count()
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+      return
+    }
+    const request = store.getAll()
+    request.onsuccess = () => {
+      let data = request.result as CachedOxfordVocab[]
+      if (level) data = data.filter((d) => d.level === level)
+      if (category) data = data.filter((d) => d.category === category)
+      resolve(data.length)
+    }
+    request.onerror = () => reject(request.error)
+  })
+}
+
+/**
+ * Oxford 단어를 ID로 가져오기
+ */
+export async function getOxfordByIds(ids: string[]): Promise<CachedOxfordVocab[]> {
+  if (ids.length === 0) return []
+  const db = await getDB()
+  const tx = db.transaction(OXFORD_STORE, 'readonly')
+  const store = tx.objectStore(OXFORD_STORE)
+  return new Promise((resolve, reject) => {
+    const results: CachedOxfordVocab[] = []
+    let pending = ids.length
+    let done = false
+    const finish = (v: CachedOxfordVocab[]) => {
+      if (!done) {
+        done = true
+        resolve(v)
+      }
+    }
+    tx.onerror = () => {
+      if (!done) {
+        done = true
+        reject(tx.error)
+      }
+    }
+    ids.forEach((id) => {
+      const r = store.get(id)
+      r.onsuccess = () => {
+        const result = r.result as CachedOxfordVocab | undefined
+        if (result) results.push(result)
+        pending -= 1
+        if (pending === 0) finish(results)
+      }
+      r.onerror = () => {
+        pending -= 1
+        if (pending === 0) finish(results)
+      }
+    })
+  })
 }
 
 /**

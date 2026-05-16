@@ -1,7 +1,11 @@
 # 백엔드 배포 가이드 (Supabase Edge Functions)
 
-이 앱의 v8.6 부터는 모든 외부 AI/TTS API 키가 **Supabase Edge Function** 으로 이동되었습니다.
-클라이언트 (Android/Web) 에는 더 이상 OpenAI / Gemini / Azure 키가 박혀있지 않습니다.
+이 앱의 v8.6 부터는 모든 외부 AI API 키가 **Supabase Edge Function** 으로 이동되었습니다.
+클라이언트 (Android/Web) 에는 더 이상 OpenAI / Gemini 키가 박혀있지 않습니다.
+
+> **TTS는 외부 API 비의존**: 모든 TTS mp3는 Supabase Storage(`vocabaudio` 버킷)에
+> 사전 업로드되어 있고, 런타임은 Storage URL만 재생합니다 (외부 TTS 호출 없음, 비용 0원).
+> 캐시 미스 시에는 브라우저 내장 Web Speech API로 자동 폴백합니다.
 
 ## 사전 준비
 
@@ -40,8 +44,6 @@ Supabase Dashboard 또는 CLI 로 환경변수를 설정합니다.
 | `OPENAI_MODEL` | `gpt-4o-mini` | (선택) |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-1` | (선택) |
 | `GEMINI_API_KEY` | `AIza...` | ✅ |
-| `AZURE_TTS_KEY` | Azure Speech 구독 키 | ✅ |
-| `AZURE_TTS_REGION` | `koreacentral` 등 | ✅ |
 | `SUPABASE_ANON_KEY` | 앱과 동일한 anon key | ✅ |
 | `APP_SHARED_SECRET` | 임의의 강한 문자열 (예: `openssl rand -hex 32`) | (권장) |
 | `ALLOWED_ORIGINS` | `https://localhost,capacitor://localhost,https://your-pwa.com` | (선택) |
@@ -50,13 +52,14 @@ Supabase Dashboard 또는 CLI 로 환경변수를 설정합니다.
 ```powershell
 supabase secrets set OPENAI_API_KEY=sk-xxx
 supabase secrets set GEMINI_API_KEY=AIzaxxx
-supabase secrets set AZURE_TTS_KEY=xxx
-supabase secrets set AZURE_TTS_REGION=koreacentral
 supabase secrets set SUPABASE_ANON_KEY=eyJxxx
 supabase secrets set APP_SHARED_SECRET=randomstring
 ```
 
 > ⚠️ **주의**: `SUPABASE_URL` 과 `SUPABASE_ANON_KEY` 는 Supabase 가 자동으로 주입하는 예약 변수와 충돌할 수 있습니다. 만약 충돌 에러가 나면 Edge Function 의 코드에서 다른 이름으로 변경하세요.
+
+> 이전 버전에서 `AZURE_TTS_KEY` / `AZURE_TTS_REGION` / `azure-tts` 함수를 등록한 적이 있다면
+> Supabase Dashboard 또는 CLI 에서 모두 제거하세요. 현재 앱은 Azure 의존성이 0 입니다.
 
 ## 2단계: Edge Functions 배포
 
@@ -66,7 +69,6 @@ cd "C:\cursor app\kenya-vocab"
 supabase functions deploy openai-vocab --no-verify-jwt
 supabase functions deploy openai-image --no-verify-jwt
 supabase functions deploy gemini-translate --no-verify-jwt
-supabase functions deploy azure-tts --no-verify-jwt
 ```
 
 배포 후 함수 URL 확인:
@@ -102,15 +104,10 @@ VITE_SUPABASE_ANON_KEY=eyJxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 VITE_APP_SECRET=<APP_SHARED_SECRET 과 동일한 값>
 ```
 
-**제거할 키들** (이제 Edge Function secrets 에 있음):
-- `VITE_OPENAI_API_KEY`
-- `VITE_OPENAI_MODEL`
+**제거할 키들** (이제 Edge Function secrets 에 있거나 더 이상 안 씀):
+- `VITE_OPENAI_API_KEY` / `VITE_OPENAI_MODEL`
 - `VITE_GEMINI_API_KEY`
-- `VITE_AZURE_TTS_KEY`
-- `VITE_AZURE_TTS_REGION`
-- `VITE_AZURE_TTS_*_VOICE`
-- `VITE_AZURE_TTS_SPEED`
-- `VITE_GCP_TTS_*`
+- `VITE_GCP_TTS_*` (런타임 TTS 외부 호출 없음)
 
 ## 5단계: 앱 빌드
 
@@ -153,7 +150,6 @@ curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/gemini-translate" `
 | `openai-vocab` | 20 | 200 |
 | `openai-image` | 5 | 30 |
 | `gemini-translate` | 30 | 500 |
-| `azure-tts` | 60 | 1000 |
 
 > 인메모리이므로 Edge Function 인스턴스마다 독립적입니다.
 > 강력한 rate limit 이 필요하면 Upstash Redis 또는 Supabase DB Counter 테이블로 마이그레이션 권장.
@@ -164,7 +160,7 @@ curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/gemini-translate" `
 - `apikey` / `Authorization: Bearer` 헤더에 anon key 가 들어있는지 확인
 - `APP_SHARED_SECRET` 을 설정한 경우 클라이언트의 `VITE_APP_SECRET` 과 일치하는지 확인
 
-### 502 OpenAI/Gemini/Azure error
+### 502 OpenAI/Gemini error
 - Edge Function secret 의 외부 API 키 유효성 확인
 - 외부 API 의 quota / billing 상태 확인
 

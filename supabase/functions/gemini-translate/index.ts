@@ -55,11 +55,20 @@ Deno.serve(async (req) => {
 
   try {
     const b = body as Record<string, unknown>
+
+    // Warmup ping: Gemini API 호출 없이 컨테이너만 깨워서 즉시 응답.
+    // 클라이언트가 사전 화면 진입 시 fire-and-forget 으로 호출.
+    if (b.ping === true) {
+      return jsonResponse(req, { ok: true, warm: true })
+    }
+
     const prompt = assertString(b.prompt, 'prompt', { max: 4000 })
     const model = assertOptionalString(b.model, 'model', { max: 100 }) ?? 'gemini-2.5-flash'
 
     const url = `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`
 
+    // Gemini 2.5 Flash 의 "thinking" 은 단순 사전 번역에는 불필요한 지연(수 초)을 만든다.
+    // thinkingBudget: 0 으로 비활성화하면 응답 속도가 5~10배 빨라진다.
     const upstream = await safeFetch(
       url,
       {
@@ -71,12 +80,13 @@ Deno.serve(async (req) => {
             temperature: 0.3,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 1024,
             responseMimeType: 'application/json',
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       },
-      45_000
+      30_000
     )
 
     if (!upstream.ok) {

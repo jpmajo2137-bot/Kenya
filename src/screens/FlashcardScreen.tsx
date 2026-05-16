@@ -1,12 +1,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Button } from '../components/Button'
 import { VocabImage } from '../components/VocabImage'
+import { CorrectedAudioBtn } from '../components/CorrectedAudioBtn'
 import { wikiSearchTitlesFromMeaningEn } from '../lib/wikiThumbnail'
 import type { Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import {
+  fetchGeneratedVocabByIdsOrdered,
+  getDenseOrderedValidVocabIdsCached,
+} from '../lib/cloudAllWordsDenseOrder'
 import { hideBannerAd, resumeBannerAd, maybeShowInterstitialAtBreakpoint, setLearningSessionActive } from '../lib/admob'
-import { 
-  getMediaFromCache, 
+import {
   isOnline,
   onOnlineStatusChange,
   getVocabFromCache,
@@ -24,6 +28,7 @@ import {
 } from '../lib/displayOverrides'
 import { stripKoreanFromEnDisplay } from '../lib/meaningEnTts'
 import { koModeSwahiliPronDisplay } from '../lib/swahiliPronDisplay'
+import { koreanPronDisplay } from '../lib/koreanRomanization'
 import { parseLevelFilter, buildTopicOrCondition, matchesTopicFilter, getClassifiedWordIds, isWordInClassifiedTopic, getOrderedWordIds, ORDERED_WORD_EXCLUSIONS, CLASSIFIED_WORD_EXCLUSIONS, getClassifiedInclusions, CLASSIFIED_EXTRA_WORDS, getClassifiedDayNExclusions, getClassifiedDayNExclusionsMap, CLASSIFIED_DAYN_EXCLUDE_PREV_DAY, getWordsFromPreviousDay, isRowExcludedByDayN, GLOBAL_WORD_EXCLUSIONS, CATEGORY_WORD_EXCLUSIONS, buildClassifiedDisplayList, getAllWordsNumberTailIds } from '../lib/filterUtils'
 
 type Mode = 'sw' | 'ko'
@@ -44,6 +49,8 @@ type CloudRow = {
   example_translation_sw: string | null
   example_translation_ko: string | null
   example_translation_en: string | null
+  /** Oxford 출처(EN-KO / KO-EN) 행 마커. SW-KO 전용 override 미적용. */
+  isOxford?: boolean
 }
 
 // 오답노트 로컬스토리지 키 (언어별 분리)
@@ -125,61 +132,35 @@ export function getWrongAnswerIds(lang?: Mode): string[] {
 }
 
 
-function AudioBtn({ url }: { url: string | null }) {
-  const blobUrlRef = useRef<string | null>(null)
-  
-  if (!url) return null
-  
-  const playAudio = async () => {
-    let urlToPlay = url
-    
-    // 오프라인이면 캐시에서 가져오기
-    if (!isOnline()) {
-      try {
-        const blob = await getMediaFromCache(url)
-        if (blob) {
-          // 이전 Blob URL 해제
-          if (blobUrlRef.current) {
-            URL.revokeObjectURL(blobUrlRef.current)
-          }
-          urlToPlay = URL.createObjectURL(blob)
-          blobUrlRef.current = urlToPlay
-        }
-      } catch {
-        // 캐시 실패 시 원본 URL 시도
-      }
-    }
-    
-    const a = new Audio(urlToPlay)
-    a.play().catch(() => {})
-  }
-  
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    playAudio()
-  }
-  
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    playAudio()
-  }
-  
+/**
+ * 화면에 표시되는 텍스트가 DB 원본과 다르면(=오버라이드 적용된 경우)
+ * 저장된 mp3 대신 Supabase 사전 캐시 mp3 / web speech 로 화면 문구를 그대로 읽어줌.
+ */
+type AudioBtnProps = {
+  url: string | null
+  /** 화면에 보이는 텍스트(반드시 이 문구가 발음됨) */
+  displayText: string | null | undefined
+  /** DB 원본 — display와 같으면 url 그대로 재생 */
+  dbText?: string | null
+  /** TTS 언어 */
+  lang: 'sw' | 'ko' | 'en'
+}
+
+function AudioBtn({ url, displayText, dbText, lang }: AudioBtnProps) {
   return (
-    <button
-      onClick={handleClick}
-      onTouchEnd={handleTouchEnd}
-      onTouchStart={(e) => e.stopPropagation()}
-      className="ml-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 transition"
-      title="Play audio"
-    >
-      🔊
-    </button>
+    <CorrectedAudioBtn
+      url={url}
+      displayText={displayText}
+      dbText={dbText}
+      lang={lang}
+      variant="flashcardInline"
+      stopPropagation
+    />
   )
 }
 
 // VocabItem을 CloudRow 형태로 변환
-type UserWord = {
+export type UserWord = {
   id: string
   sw: string
   ko: string
@@ -187,6 +168,23 @@ type UserWord = {
   example?: string
   exampleKo?: string
   exampleEn?: string
+  // 옵션: Oxford 등 외부 데이터 소스에서 URL/이미지 보존을 위해 추가
+  word_audio_url?: string | null
+  image_url?: string | null
+  meaning_audio_url?: string | null
+  example_audio_url?: string | null
+  example_translation_audio_url?: string | null
+  // 학습 대상(`sw` 슬롯) 단어의 발음 가이드.
+  // - SW-KO 에서는 스와힐리 어절 발음(displayOverrides 가 우선).
+  // - Oxford KO-EN 에서는 영어 단어의 한글 표기(예: one→"원") 가 들어옴.
+  word_pronunciation?: string | null
+  /**
+   * Oxford 출처(EN-KO / KO-EN) 데이터인지 여부.
+   * true 면 어댑터에서 displayOverrides 의 모든 교정을 미리 적용한 상태이므로,
+   * FlashcardScreen 내부의 SW-KO 전용 override(`applySwOverride` 등)는 건너뛰고
+   * 모국어가 영어인 EN-KO 모드에서는 `applyEnOverride` 만 추가 적용한다.
+   */
+  isOxford?: boolean
 }
 
 function convertUserWordToCloudRow(item: UserWord, mode: Mode): CloudRow {
@@ -194,18 +192,22 @@ function convertUserWordToCloudRow(item: UserWord, mode: Mode): CloudRow {
     id: item.id,
     mode,
     word: item.sw,
-    word_pronunciation: null,
-    word_audio_url: null,
-    image_url: null,
-    meaning_sw: null,
+    word_pronunciation: item.word_pronunciation ?? null,
+    word_audio_url: item.word_audio_url ?? null,
+    image_url: item.image_url ?? null,
+    // Oxford EN-KO 모드(mode='sw')에서는 meaning_sw 슬롯이 없고 영어가 모국어다.
+    // 어댑터가 이미 교정해 넘긴 영어 글로스를 meaning_sw 슬롯에도 채워서, 화면
+    // 렌더링 경로(mode='sw' → meaning_sw 우선) 가 그대로 영어 글로스를 노출한다.
+    meaning_sw: item.isOxford && mode === 'sw' ? (item.en ?? null) : null,
     meaning_ko: item.ko,
     meaning_en: item.en || null,
     example: item.example || null,
     example_pronunciation: null,
-    example_audio_url: null,
+    example_audio_url: item.example_audio_url ?? null,
     example_translation_sw: null,
     example_translation_ko: item.exampleKo || null,
     example_translation_en: item.exampleEn || null,
+    isOxford: item.isOxford,
   }
 }
 
@@ -219,6 +221,8 @@ export function FlashcardScreen({
   wrongAnswerMode = false,
   wrongWordIds,
   userWords,
+  onWrongAnswer,
+  onMastered,
 }: {
   lang: Lang
   mode: Mode
@@ -226,9 +230,11 @@ export function FlashcardScreen({
   dayNumber?: number
   wordsPerDay?: number
   onClose: () => void
-  wrongAnswerMode?: boolean // 오답노트 모드
-  wrongWordIds?: string[] // 특정 오답 단어 ID 목록 (Day별 학습용)
-  userWords?: UserWord[] // 사용자 단어 모드
+  wrongAnswerMode?: boolean
+  wrongWordIds?: string[]
+  userWords?: UserWord[]
+  onWrongAnswer?: (wordId: string) => void
+  onMastered?: (wordId: string) => void
 }) {
   const [words, setWords] = useState<CloudRow[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -621,46 +627,15 @@ export function FlashcardScreen({
             setWords(cleaned.slice(0, wordsPerDay))
           }
         } else {
-          const isAllWords = !pf.category && !pf.pos && !pf.topic
-          const numberTailIds = isAllWords ? getAllWordsNumberTailIds(mode) : []
-          const needNumberTail = numberTailIds.length > 0
+          const isPlainAllWords = !pf.category && !pf.pos && !pf.topic
 
-          if (needNumberTail && dayNumber) {
-            const numberIdFilter = `(${numberTailIds.join(',')})`
-            const { count: nonNumCount } = await supabase
-              .from('generated_vocab')
-              .select('*', { count: 'exact', head: true })
-              .eq('mode', mode)
-              .not('id', 'in', numberIdFilter)
-            const nonNumberCount = nonNumCount ?? 0
-            const nonNumberDays = Math.ceil(nonNumberCount / wordsPerDay)
-
-            if (dayNumber <= nonNumberDays) {
-              const startIdx = (dayNumber - 1) * wordsPerDay
-              const endIdx = startIdx + wordsPerDay - 1
-              const { data } = await supabase
-                .from('generated_vocab')
-                .select('*')
-                .eq('mode', mode)
-                .not('id', 'in', numberIdFilter)
-                .order('created_at', { ascending: true })
-                .range(startIdx, endIdx)
-              let cleaned = ((data ?? []) as CloudRow[]).filter((r) => !r.word?.startsWith('__deleted__'))
-              cleaned = cleaned.filter((r) => !GLOBAL_WORD_EXCLUSIONS.includes(r.word ?? ''))
-              setWords(cleaned)
-            } else {
-              const numOffset = (dayNumber - nonNumberDays - 1) * wordsPerDay
-              const targetIds = numberTailIds.slice(numOffset, numOffset + wordsPerDay)
-              if (targetIds.length === 0) { setWords([]); setLoading(false); return }
-              const { data } = await supabase
-                .from('generated_vocab')
-                .select('*')
-                .in('id', targetIds)
-              const idOrder = new Map(targetIds.map((id, i) => [id, i]))
-              let sorted = ((data ?? []) as CloudRow[]).sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0))
-              sorted = sorted.filter((r) => !r.word?.startsWith('__deleted__'))
-              setWords(sorted)
-            }
+          if (isPlainAllWords) {
+            const orderedIds = await getDenseOrderedValidVocabIdsCached(supabase, mode)
+            const sliceIds = dayNumber
+              ? orderedIds.slice((dayNumber - 1) * wordsPerDay, dayNumber * wordsPerDay)
+              : orderedIds.slice(0, wordsPerDay)
+            const fullRows = await fetchGeneratedVocabByIdsOrdered(supabase, sliceIds)
+            setWords(fullRows as CloudRow[])
           } else {
             let query = supabase
               .from('generated_vocab')
@@ -672,10 +647,6 @@ export function FlashcardScreen({
             if (pf.topic) {
               const orCond = buildTopicOrCondition(pf.topic, mode)
               if (orCond) query = query.or(orCond)
-            }
-
-            if (needNumberTail) {
-              query = query.not('id', 'in', `(${numberTailIds.join(',')})`)
             }
 
             if (dayNumber) {
@@ -884,14 +855,14 @@ export function FlashcardScreen({
 
   const handleUnknown = useCallback(() => {
     setUnknownCount((c) => c + 1)
-    // 몰라요 선택 시 오답노트에 추가 (언어별)
     if (currentWord) {
       lastActionRef.current = { index: currentIndex, type: 'unknown', wordId: currentWord.id }
       addToWrongAnswers(currentWord.id, mode)
+      onWrongAnswer?.(currentWord.id)
       setWrongWords((prev) => [...prev, currentWord])
     }
     goToNext('left')
-  }, [goToNext, currentIndex, currentWord, mode])
+  }, [goToNext, currentIndex, currentWord, mode, onWrongAnswer])
 
   // 오답노트 모드: 외웠어요 (오답노트에서 제거, 언어별)
   const handleMastered = useCallback(() => {
@@ -899,9 +870,10 @@ export function FlashcardScreen({
     if (currentWord) {
       lastActionRef.current = { index: currentIndex, type: 'mastered', wordId: currentWord.id }
       removeFromWrongAnswers(currentWord.id, mode)
+      onMastered?.(currentWord.id)
     }
     goToNext('left')
-  }, [goToNext, currentIndex, currentWord, mode])
+  }, [goToNext, currentIndex, currentWord, mode, onMastered])
 
   // 오답노트 모드: 넘기기 (오답노트에서 제거 안함)
   const handleSkip = useCallback(() => {
@@ -1032,7 +1004,15 @@ export function FlashcardScreen({
       const raw = mode === 'sw' 
         ? (w.meaning_sw || w.meaning_en || '') 
         : (w.meaning_ko || w.meaning_en || '')
-      const trimmed = raw.includes(',') ? raw.split(',')[0].trim() : raw
+      const trimmed =
+        mode === 'sw' && raw.includes(',') ? raw.split(',')[0].trim() : raw
+      // Oxford 행은 어댑터에서 모든 교정 완료 → 추가 override 불필요.
+      // EN-KO 모드(mode='sw')에서는 영어 글로스가 모국어이므로 applyEnOverride 로 안전하게 한 번 더 보강.
+      if (w.isOxford) {
+        return (mode === 'sw'
+          ? applyEnOverride(trimmed, w.word)
+          : applyKoOverride(w.word, trimmed)) ?? trimmed
+      }
       return (mode === 'sw'
         ? applySwOverride(w.word, trimmed)
         : applyKoOverride(w.word, trimmed)) ?? trimmed
@@ -1095,7 +1075,12 @@ export function FlashcardScreen({
                         <div className="text-xs sm:text-sm font-bold text-white truncate">{w.word}</div>
                         <div className="text-[10px] sm:text-xs text-white/60 truncate">{getMeaning(w)}</div>
                       </div>
-                      <AudioBtn url={w.word_audio_url} />
+                      <AudioBtn
+                        url={w.word_audio_url}
+                        displayText={WORD_DISPLAY_OVERRIDE[w.word]?.word ?? w.word}
+                        dbText={w.word}
+                        lang={mode === 'ko' ? 'sw' : 'ko'}
+                      />
                     </div>
                   ))}
                 </div>
@@ -1139,15 +1124,31 @@ export function FlashcardScreen({
   const displayWordPron =
     mode === 'ko'
       ? koModeSwahiliPronDisplay(displayWord, currentWord.word_pronunciation, wordOverrideEntry?.pron)
-      : (wordOverrideEntry?.pron ?? currentWord.word_pronunciation)
+      : koreanPronDisplay(displayWord, currentWord.word_pronunciation, wordOverrideEntry?.pron)
 
   const rawMeaning = mode === 'sw' 
     ? (currentWord.meaning_sw || currentWord.meaning_en || '') 
     : (currentWord.meaning_ko || currentWord.meaning_en || '')
-  const trimmedMeaning = rawMeaning.includes(',') ? rawMeaning.split(',')[0].trim() : rawMeaning
-  const meaning = (mode === 'sw'
-    ? applySwOverride(currentWord.word, trimmedMeaning)
-    : applyKoOverride(currentWord.word, trimmedMeaning)) ?? trimmedMeaning
+  const trimmedMeaning =
+    mode === 'sw' && rawMeaning.includes(',')
+      ? rawMeaning.split(',')[0].trim()
+      : rawMeaning
+  const meaning = (() => {
+    // Oxford 행은 어댑터가 displayOverrides 의 모든 교정을 미리 적용했으므로,
+    // SW-KO 전용 override 가 잘못 끼어들지 않도록 영어 모국어용 applyEnOverride 만 한 번 더 적용.
+    if (currentWord.isOxford) {
+      return (
+        (mode === 'sw'
+          ? applyEnOverride(trimmedMeaning, currentWord.word)
+          : applyKoOverride(currentWord.word, trimmedMeaning)) ?? trimmedMeaning
+      )
+    }
+    return (
+      (mode === 'sw'
+        ? applySwOverride(currentWord.word, trimmedMeaning)
+        : applyKoOverride(currentWord.word, trimmedMeaning)) ?? trimmedMeaning
+    )
+  })()
   
   const exOverride = currentWord.example ? EXAMPLE_DISPLAY_OVERRIDE[currentWord.example] : undefined
   const displayExample = exOverride?.text ?? currentWord.example
@@ -1158,7 +1159,7 @@ export function FlashcardScreen({
           currentWord.example_pronunciation,
           exOverride?.pron,
         )
-      : (exOverride?.pron ?? currentWord.example_pronunciation)
+      : koreanPronDisplay(displayExample, currentWord.example_pronunciation, exOverride?.pron)
 
   const wordOverride = currentWord.word ? EXAMPLE_TRANSLATION_OVERRIDE_BY_WORD[currentWord.word] : undefined
   const rawExTranslation = mode === 'sw'
@@ -1239,7 +1240,12 @@ export function FlashcardScreen({
               />
               <div className="text-3xl sm:text-4xl font-extrabold text-white mb-2 sm:mb-3 flex items-center">
                 {displayWord}
-                <AudioBtn url={currentWord.word_audio_url} />
+                <AudioBtn
+                  url={currentWord.word_audio_url}
+                  displayText={displayWord}
+                  dbText={currentWord.word}
+                  lang={mode === 'ko' ? 'sw' : 'ko'}
+                />
               </div>
               {displayWordPron && (
                 <div className="text-base sm:text-lg text-cyan-400 font-semibold">
@@ -1270,7 +1276,12 @@ export function FlashcardScreen({
                 <div className="w-full rounded-2xl bg-black/30 p-3 sm:p-4 mb-3 sm:mb-4">
                   <div className="text-sm sm:text-base text-white/90 mb-1 flex items-center flex-wrap">
                     {displayExample}
-                    <AudioBtn url={currentWord.example_audio_url} />
+                    <AudioBtn
+                      url={currentWord.example_audio_url}
+                      displayText={displayExample}
+                      dbText={currentWord.example}
+                      lang={mode === 'ko' ? 'sw' : 'ko'}
+                    />
                   </div>
                   {displayExamplePron && (
                     <div className="text-xs sm:text-sm text-cyan-400 mb-1 sm:mb-2">

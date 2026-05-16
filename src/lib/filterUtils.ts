@@ -238,6 +238,11 @@ export const CLASSIFIED_MAX_DAYS: Record<string, number> = {
   '일상생활': 5,  // 1700+ 단어 중 Day 5(200개)까지만 표시
 }
 
+/** 분류 단어장 카드의 「개 단어」 표시 및 목록 상한 (정렬·배치 후 앞에서부터 N개만 노출) */
+export const CLASSIFIED_DISPLAY_COUNT_CAP: Record<string, number> = {
+  '색상/외모': 36,
+}
+
 /** 모드별 분류 단어장 포함 목록 (인사/기본표현 SW: 인사·안부 관련 80개만) */
 export const CLASSIFIED_WORD_INCLUSIONS_BY_MODE: Record<string, Partial<Record<'ko' | 'sw', string[]>>> = {
   '인사/기본표현': {
@@ -448,19 +453,24 @@ export function buildClassifiedDisplayList<T extends { word?: string | null; mea
   topicName: string,
   mode: 'ko' | 'sw',
 ): T[] {
+  const applyDisplayCap = (list: T[]) => {
+    const cap = CLASSIFIED_DISPLAY_COUNT_CAP[topicName]
+    return cap != null ? list.slice(0, cap) : list
+  }
   let filtered = rowsAfterExclusionsAndExtras
   if (CLASSIFIED_DEDUPLICATE_TOPICS.includes(topicName)) {
     filtered = deduplicateClassifiedRows(filtered, CLASSIFIED_DEDUPLICATE_BY_WORD_ONLY.includes(topicName))
   }
   filtered = sortClassifiedRowsByWordOrder(filtered, topicName)
   const day1Incl = getClassifiedDay1Inclusions(topicName, mode)
-  if (!day1Incl?.length) return filtered
+  if (!day1Incl?.length) return applyDisplayCap(filtered)
   const day1Set = new Set(day1Incl)
   const day1Excl = new Set(CLASSIFIED_DAY1_EXCLUSIONS[topicName] ?? [])
   const day1Rows = filtered.filter((r) => day1Set.has(r.word ?? ''))
   const rest = filtered.filter((r) => !day1Set.has(r.word ?? ''))
   const ordered = [...day1Rows, ...rest]
-  return day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
+  const merged = day1Excl.size ? ordered.filter((r) => !day1Excl.has(r.word ?? '')) : ordered
+  return applyDisplayCap(merged)
 }
 
 /** 특정 분류 단어장에서만 제외할 단어 (classifiedKey → 제외할 word 목록) */
@@ -509,7 +519,7 @@ export const CLASSIFIED_WORD_EXCLUSIONS: Record<string, string[]> = {
     '곡선', '단단하다', '깊이', '표면', '선명함', '희미한', '딱 맞다',
     '미적', '광범위하게', '광범위하다', '사소하다',
     '숨겨진', '완전한', '완전하다', '극단적인', '한가운데', '뒤섞인', '굵은', '사이즈',
-    '깔끔한', '유명하다', '생생하다', '응시하다', '뚜렷한', '스타일', '비슷한', '비슷하다',
+    '깔끔한', '유명하다', '생생하다', '응시하다', '뚜렷한', '뚜렷하게', '분명히', '스타일', '비슷한', '비슷하다',
     '비슷하게', '디자인', '구식이다', '정사각형', '눈에 띄는', '아주 작은', '평범한',
     '온전한', '벌거벗은', '똑같은', '독특한', '독특하다', '울퉁불퉁한', '평평한', '평평하다',
     '라지', '평행한', '거대한', '꽉 끼다', '흠', '낮다', '길이', '멋있다',
@@ -524,7 +534,7 @@ export const CLASSIFIED_WORD_EXCLUSIONS: Record<string, string[]> = {
     '사이', '올리다', '어딘가', '스키를 타다', '로켓', '위쪽의', '끌어내다', '통해', '예약하다',
     '나란히', '아래로', '주변에', '다른 곳에', '흔들다', '아래에', '말', '어디에나', '회전하다',
     '급습하다', '경주하다', '되찾다', '서쪽', '화물', '동쪽', '가운데',
-    '천천히', '접근하다', '찾다', '추적하다', '변두리의', '거꾸로', '옆', '구간',
+    '천천히', '접근하다', '찾다', '추적하다', '감시하다', '변두리의', '거꾸로', '옆', '구간',
     '북쪽의', '경계', '떨어져', '가까운', '돌리다', '위의', '경주장', '줄', '치솟다', '회전',
     '경주용', '피하다', '제트기', '싣다', '예약', '옆에', '쏘다', '표', '튕기다', '뛰어오르다', '옮기다', '숙소', '오르다', '조종사', '앞서 있는',
   ],
@@ -659,7 +669,10 @@ export function getClassifiedDisplayCount(
   const inclusions = getClassifiedInclusions(topicName, mode as 'ko' | 'sw')
   const raw = inclusions?.length ? inclusions.length : getClassifiedCount(topicName, mode)
   const maxDays = CLASSIFIED_MAX_DAYS[topicName]
-  return maxDays != null ? Math.min(raw, maxDays * wordsPerDay) : raw
+  let capped = maxDays != null ? Math.min(raw, maxDays * wordsPerDay) : raw
+  const countCap = CLASSIFIED_DISPLAY_COUNT_CAP[topicName]
+  if (countCap != null) capped = Math.min(capped, countCap)
+  return capped
 }
 
 /** 제외 적용 후 실제 남는 단어 수 (비동기, fetcher로 데이터 조회) */

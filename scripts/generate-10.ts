@@ -21,9 +21,9 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY
 const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY
 const OPENAI_MODEL = process.env.VITE_OPENAI_MODEL || 'gpt-4o-mini'
-const GCP_VOICE_KO = process.env.GCP_TTS_KO_VOICE || 'ko-KR-Wavenet-D'
+const GCP_VOICE_KO = process.env.GCP_TTS_KO_VOICE || 'ko-KR-Wavenet-B'
 const GCP_VOICE_SW = process.env.GCP_TTS_SW_VOICE || 'sw-KE-Standard-A'
-const GCP_VOICE_EN = process.env.GCP_TTS_EN_VOICE || 'en-US-Wavenet-D'
+const GCP_VOICE_EN = process.env.GCP_TTS_EN_VOICE || 'en-US-Wavenet-F'
 const GCP_TTS_SPEED = Number(process.env.GCP_TTS_SPEED ?? '1') || 1
 
 type Mode = 'sw' | 'ko'

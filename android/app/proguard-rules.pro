@@ -102,6 +102,13 @@
 -dontwarn androidx.**
 -dontwarn android.support.**
 
+# EdgeToEdge (SDK 35+ edge-to-edge 대응)
+-keep class androidx.activity.EdgeToEdge { *; }
+-keep class androidx.activity.EdgeToEdge$* { *; }
+
+# SplashScreen
+-keep class androidx.core.splashscreen.** { *; }
+
 # =========================================
 # 6. 암호화 / 보안 클래스 (리플렉션 사용)
 # =========================================

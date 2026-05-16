@@ -36,11 +36,8 @@
         <domain includeSubdomains="true">ip-api.com</domain>
         <domain includeSubdomains="true">ipapi.co</domain>
 
-        <!-- OpenAI / Microsoft / Gemini -->
+        <!-- OpenAI / Gemini -->
         <domain includeSubdomains="true">openai.com</domain>
-        <domain includeSubdomains="true">microsoft.com</domain>
-        <domain includeSubdomains="true">microsoftonline.com</domain>
-        <domain includeSubdomains="true">tts.speech.microsoft.com</domain>
 
         <trust-anchors>
             <certificates src="system" />

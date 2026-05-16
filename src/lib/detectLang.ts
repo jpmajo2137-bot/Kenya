@@ -1,6 +1,18 @@
-import type { Lang } from './i18n'
+import type { NativeLang, TargetLang } from './types'
 
 const EAST_AFRICA_COUNTRIES = ['KE', 'UG', 'RW', 'TZ'] // 케냐, 우간다, 르완다, 탄자니아
+
+/** 첫 실행 시 자동 선택될 사용자 버전 (모국어 → 학습언어) */
+export type InitialLangPair = {
+  nativeLang: NativeLang
+  targetLang: TargetLang
+}
+
+// 기본값: 스와힐리어/한국어 사용자가 아닌 경우 영어-한국어 버전
+export const DEFAULT_INITIAL_LANG_PAIR: InitialLangPair = {
+  nativeLang: 'en',
+  targetLang: 'ko',
+}
 
 // 첫 실행 여부 확인 키
 const FIRST_RUN_KEY = 'kenya-vocab.firstRun'
@@ -67,38 +79,30 @@ export function isEastAfricaCountry(countryCode: string | null): boolean {
   return EAST_AFRICA_COUNTRIES.includes(countryCode.toUpperCase())
 }
 
-// 초기 언어 감지 (비동기) - 최대 3초 내에 결정
-export async function detectInitialLang(): Promise<Lang> {
-  try {
-    // 1. 한국어 기기 → KO (위치와 상관없이)
-    if (isKoreanDevice()) {
-      console.log('[Lang] 한국어 기기 감지됨 → KO')
-      return 'ko'
-    }
+// 기기 언어가 영어인지 확인
+export function isEnglishDevice(): boolean {
+  const lang = getDeviceLanguage()
+  return lang.startsWith('en')
+}
 
-    // 2. 스와힐리어 기기 → SW
-    if (isSwahiliDevice()) {
-      console.log('[Lang] 스와힐리어 기기 감지됨 → SW')
-      return 'sw'
-    }
-
-    // 3. 위치가 동아프리카(케냐/우간다/르완다/탄자니아) → SW
-    // 1.5초 타임아웃으로 위치 확인 (빠른 로딩 위해)
-    const countryPromise = getCountryCode()
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
-    
-    const countryCode = await Promise.race([countryPromise, timeoutPromise])
-    console.log('[Lang] 국가 코드:', countryCode)
-    
-    if (isEastAfricaCountry(countryCode)) {
-      console.log('[Lang] 동아프리카 국가 감지됨 → SW')
-      return 'sw'
-    }
-  } catch (err) {
-    console.log('[Lang] 언어 감지 오류:', err)
+// 초기 사용자 버전 감지 (비동기)
+//
+// 기기 언어에 따라 첫 실행 시 적절한 언어 쌍을 자동 선택한다.
+//   한국어 기기 → ko-en (한국어 → 영어)
+//   스와힐리어 기기 → sw-ko (스와힐리 → 한국어)
+//   그 외 (영어 포함) → en-ko (영어 → 한국어)
+// 이후 실행부터는 localStorage에 저장된 마지막 설정이 복원된다.
+export async function detectInitialLang(): Promise<InitialLangPair> {
+  if (isKoreanDevice()) {
+    console.log('[Lang] 한국어 기기 감지 → ko-en')
+    return { nativeLang: 'ko', targetLang: 'en' }
   }
 
-  // 4. 그 외 → SW (기본)
-  console.log('[Lang] 기본값 → SW')
-  return 'sw'
+  if (isSwahiliDevice()) {
+    console.log('[Lang] 스와힐리어 기기 감지 → sw-ko')
+    return { nativeLang: 'sw', targetLang: 'ko' }
+  }
+
+  console.log('[Lang] 영어/기타 기기 → en-ko')
+  return DEFAULT_INITIAL_LANG_PAIR
 }

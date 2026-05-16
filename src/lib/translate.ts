@@ -220,13 +220,15 @@ async function callGeminiAPIOnce(
   fromLang: string,
   model: string,
 ): Promise<TranslationResult> {
+  // thinkingBudget=0 적용 후 warm 응답이 평균 2~3초이므로 12s 면 충분.
+  // 빠른 fallback 으로 사용자 체감 지연을 줄인다.
   const data = await callEdgeFunction<
     { prompt: string; model: string },
     GeminiResponse
   >('gemini-translate', {
     prompt: buildPrompt(word, fromLang),
     model,
-  }, { timeoutMs: 25_000 })
+  }, { timeoutMs: 12_000 })
 
   const parts = data?.candidates?.[0]?.content?.parts ?? []
   let text = ''
@@ -315,4 +317,36 @@ export async function translate(word: string, fromLang: 'sw' | 'ko' | 'en'): Pro
 export function hasGeminiApi(): boolean {
   // 백엔드 프록시(Edge Function)가 설정되어 있으면 사용 가능
   return isEdgeFunctionsConfigured()
+}
+
+/**
+ * Edge Function 컨테이너 콜드 스타트 워밍업.
+ * - Gemini API 호출 없이 즉시 200 응답 (서버에 ping:true 핸들러 존재)
+ * - 사전 화면 진입 등 사용자가 곧 검색할 가능성이 높은 시점에 fire-and-forget 호출
+ * - 사용량 카운터/광고 한도에 영향 없음
+ * - 호출 실패는 조용히 무시 (네트워크 없음/오프라인 등)
+ */
+let warmupInFlight = false
+let warmupDoneAt = 0
+const WARMUP_TTL_MS = 4 * 60_000 // 4분 (Supabase Edge Function 인스턴스 keep-alive 시간 대략)
+
+export function warmupTranslate(): void {
+  if (!isEdgeFunctionsConfigured()) return
+  if (warmupInFlight) return
+  if (Date.now() - warmupDoneAt < WARMUP_TTL_MS) return
+  warmupInFlight = true
+  callEdgeFunction<{ ping: true }, { ok?: boolean }>(
+    'gemini-translate',
+    { ping: true },
+    { timeoutMs: 5_000 },
+  )
+    .then(() => {
+      warmupDoneAt = Date.now()
+    })
+    .catch(() => {
+      /* 무시: 워밍업 실패는 사용자 흐름에 영향 없음 */
+    })
+    .finally(() => {
+      warmupInFlight = false
+    })
 }

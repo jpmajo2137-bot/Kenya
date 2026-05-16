@@ -24,6 +24,7 @@ import {
   buildClassifiedDisplayList,
 } from '../lib/filterUtils'
 import { applyEnOverride } from '../lib/displayOverrides'
+import { getDenseOrderedValidVocabIdsCached } from '../lib/cloudAllWordsDenseOrder'
 
 const DEFAULT_WORDS_PER_DAY = 40
 
@@ -319,14 +320,27 @@ export function AllWordsDayList({
           return
         }
         const isAllWords = !pf.category && !pf.pos && !pf.topic
-        const numberTailIds = isAllWords ? getAllWordsNumberTailIds(mode) : []
-        if (numberTailIds.length > 0) {
-          const { count: nonNumCount } = await supabase
-            .from('generated_vocab')
-            .select('*', { count: 'exact', head: true })
-            .eq('mode', mode)
-            .not('id', 'in', `(${numberTailIds.join(',')})`)
-          setTotalCount((nonNumCount ?? 0) + numberTailIds.length)
+        if (isAllWords) {
+          try {
+            const ids = await getDenseOrderedValidVocabIdsCached(supabase, mode)
+            setTotalCount(ids.length)
+          } catch {
+            const numberTailIds = getAllWordsNumberTailIds(mode)
+            if (numberTailIds.length > 0) {
+              const { count: nonNumCount } = await supabase
+                .from('generated_vocab')
+                .select('*', { count: 'exact', head: true })
+                .eq('mode', mode)
+                .not('id', 'in', `(${numberTailIds.join(',')})`)
+              setTotalCount((nonNumCount ?? 0) + numberTailIds.length)
+            } else {
+              const { count } = await supabase
+                .from('generated_vocab')
+                .select('*', { count: 'exact', head: true })
+                .eq('mode', mode)
+              setTotalCount(count ?? 0)
+            }
+          }
           setLoading(false)
           return
         }
