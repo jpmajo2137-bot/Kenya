@@ -8,6 +8,7 @@ import { generateWordImage } from '../lib/openai'
 import type { Lang } from '../lib/i18n'
 import type { NativeLang, TargetLang } from '../lib/types'
 import { supabase } from '../lib/supabase'
+import { isKoEnOxford, queryOxfordKoEn } from '../lib/oxfordApi'
 import {
   getOxfordFromCache,
   getOxfordCacheCount,
@@ -124,6 +125,36 @@ export function OxfordCloudScreen({
       : null
 
   const fetchFromCloud = async () => {
+    const wordList = wordWhitelist
+      ? wordWhitelist.length > 0
+        ? wordWhitelist
+        : ['__none__']
+      : null
+
+    if (isKoEnOxford(targetLang)) {
+      setLoading(true)
+      setError(null)
+      setUsingCache(false)
+      try {
+        const start = dayNumber ? (dayNumber - 1) * wordsPerDay : 0
+        const { rows, total } = await queryOxfordKoEn({
+          level: levelFilter || undefined,
+          category: effectiveCategory || undefined,
+          pos: effectivePos || undefined,
+          words: wordList,
+          offset: dayNumber ? start : 0,
+          limit: dayNumber ? wordsPerDay : 500,
+        })
+        setTotalCount(total)
+        setRows(rows)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     if (!supabase) {
       setError(
         lang === 'sw'
@@ -138,13 +169,6 @@ export function OxfordCloudScreen({
     setError(null)
     setUsingCache(false)
     try {
-      // 빈 whitelist 도 명시적으로 0 행 결과를 만들기 위한 placeholder
-      const wordList = wordWhitelist
-        ? wordWhitelist.length > 0
-          ? wordWhitelist
-          : ['__none__']
-        : null
-
       let countQuery = supabase
         .from('oxford_vocab')
         .select('*', { count: 'exact', head: true })
@@ -216,7 +240,7 @@ export function OxfordCloudScreen({
   }
 
   useEffect(() => {
-    if (online && supabase) void fetchFromCloud()
+    if (isKoEnOxford(targetLang) || (online && supabase)) void fetchFromCloud()
     else void fetchFromLocalCache()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online, levelFilter, categoryFilter, filter, dayNumber, nativeLang, targetLang])

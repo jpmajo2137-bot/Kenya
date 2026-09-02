@@ -12,6 +12,7 @@ import {
 import { VocabImage } from '../components/VocabImage'
 import { t, type Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import { isKoEnOxford, queryOxfordKoEn } from '../lib/oxfordApi'
 import { wikiSearchTitlesFromMeaningEn } from '../lib/wikiThumbnail'
 import { romanizeKoreanText } from '../lib/koreanRomanization'
 import {
@@ -379,6 +380,23 @@ export function OxfordDictionaryScreen({
       return
     }
     setShowAdPrompt(false)
+    if (isKoEnOxford(targetLang)) {
+      setLoading(true)
+      setError(null)
+      setAiResult(null)
+      try {
+        const { rows } = await queryOxfordKoEn({ search: q, limit: 50 })
+        setResults(rows)
+        if (rows.length === 0) {
+          await runAiSearch(q)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
     if (!supabase) {
       setError(
         lang === 'sw'

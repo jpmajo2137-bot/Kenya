@@ -173,6 +173,21 @@ export async function getOxfordCacheCount(
 }
 
 /**
+ * Oxford 5000 캐시에 행 저장 (Firebase / 번들 로드 후)
+ */
+export async function putOxfordCache(rows: CachedOxfordVocab[]): Promise<void> {
+  if (rows.length === 0) return
+  const db = await getDB()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(OXFORD_STORE, 'readwrite')
+    const store = tx.objectStore(OXFORD_STORE)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+    for (const row of rows) store.put(row)
+  })
+}
+
+/**
  * Oxford 단어를 ID로 가져오기
  */
 export async function getOxfordByIds(ids: string[]): Promise<CachedOxfordVocab[]> {
