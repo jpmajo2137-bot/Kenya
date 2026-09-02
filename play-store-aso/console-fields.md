@@ -62,72 +62,62 @@ Tags / store positioning:
 - Flashcards
 - Quiz
 
-## App content answers (Play Console UI)
+## App content answers (Play Console)
 
-API로 넣을 수 없는 항목. 콘솔에서 아래처럼 제출한다.
+### Data safety — API로 제출 완료
 
-### Privacy policy
+파일: `play-store-aso/data-safety.csv`
 
-정책 및 프로그램 → 앱 콘텐츠 → 개인정보처리방침
+- 수집/공유: 예 (AdMob + Firebase Analytics + 사전 검색)
+- 전송 암호화: 예
+- 계정 생성: 없음 (`PSL_ACM_NONE`)
+- 데이터 삭제: 예 — https://jhpenglish.web.app/delete-data
+- 대략적 위치, 앱 상호작용, 기기 ID: 수집+공유 / 광고·분석·사기 방지 / 필수
+- 진단·충돌 로그: 수집+공유 / 분석·사기 방지
+- 인앱 검색어: 수집+공유 / 앱 기능 / 선택(검색할 때만)
 
-URL: `https://jhpenglish.web.app/privacy`
+### Privacy policy URL 폼 — 콘솔 UI 필요
 
-### Ads
+정책 및 프로그램 → 앱 콘텐츠 → 개인정보처리방침  
+URL: `https://jhpenglish.web.app/privacy`  
+(스토어 설명/연락처 웹사이트에는 이미 반영됨. **앱 콘텐츠 전용 필드**는 Publisher API에 없음.)
 
-앱에 광고가 포함됨: **예** (AdMob 배너/전면/보상형)
+### Ads / Target audience / Content rating — 콘솔 UI 필요
 
-### Target audience
+- 광고 포함: **예** (AdMob)
+- 대상 연령: **13세 이상**, 아동 대상 아님
+- IARC: 교육/유틸, 폭력·성인물·UGC 없음, 위치 공유 없음, 무제한 인터넷 예
+- 예상 등급: Everyone / PEGI 3
 
-- 대상 연령: **13세 이상** (만 13세 미만 대상 아님)
-- 아동 대상 앱 아님
-- Appeal to children: No
+### Internal testers
 
-### Content rating (IARC)
+트랙 1.00 (1) 은 **completed**. Testers API는 Google 그룹만 지원해 이메일을 넣을 수 없음.  
+콘솔 → 테스트 → 내부 테스트 → 테스터에 이메일 또는 Google 그룹 추가.
 
-카테고리: **유틸리티 / 교육 / 참고** 중 교육에 가깝게
+## App Store Connect (API로 반영됨)
 
-- 폭력: 없음
-- 성적 콘텐츠: 없음
-- 욕설: 없음
-- 약물: 없음
-- 사용자 간 소통/UGC: 없음
-- 위치 공유: 없음
-- 디지털 구매: 없음 (보상형 광고는 IAP 아님)
-- 무제한 인터넷 접속: **예** (광고, 사전 검색)
-
-예상 등급: Everyone / PEGI 3 / IARC 3+
-
-이메일: jpmajo2137@gmail.com
-
-### Data safety (요약)
-
-수집/공유 **예** (AdMob + Firebase Analytics)
-
-- 암호화 전송: 예 (HTTPS)
-- 계정 삭제: 해당 없음 (계정 없음). 기기 데이터는 앱 설정에서 삭제
-- 대략적 위치: 수집+공유 / 광고, 분석, 사기 방지
-- 앱 상호작용: 수집+공유 / 광고, 분석
-- 진단/충돌 로그: 수집+공유 / 분석, 사기 방지
-- 기기 또는 기타 ID: 수집+공유 / 광고, 분석, 사기 방지
-- 사용자 선택: 광고 ID는 기기 설정에서 재설정 가능. 광고 기능상 일부 수집은 필수
-
-### Other declarations
-
-- 뉴스 앱: 아니오
-- COVID-19: 아니오
-- 정부 앱: 아니오
-- 금융 기능: 아니오
-- 건강: 아니오
-- 앱 액세스: 로그인 없이 모든 학습 기능 사용 가능
-- 데이터 보안 / 삭제: 위 개인정보처리방침 URL
+- App id: `6807980665` / bundle `com.jph.oxfordenglish` / 버전 1.0
+- 개인정보처리방침: ko·en-US 모두 `https://jhpenglish.web.app/privacy`
+- 개인정보 선택/삭제: `https://jhpenglish.web.app/delete-data`
+- 연령 등급 설문: 광고 예, 그 외 NONE/없음 → 계산 등급 **4+**
+- 카테고리: Education / Reference
+- 콘텐츠 권리: DOES_NOT_USE_THIRD_PARTY_CONTENT
+- 저작권: 2026 JHP
+- IDFA 사용: 예 (AdMob)
+- ko/en-US 설명·키워드·지원 URL
+- TestFlight 내부 그룹 `Internal Testers` + 계정 소유자 `jhgp2137@naver.com`
+- 앱 개인정보 nutrition labels: API 없음 → 콘솔에서 AdMob/기기 식별자 선언 필요
+- 심사 연락처 전화: API 필수값. 번호가 없어 미기입
+- IPA/빌드: 아직 없음 (macOS Archive 필요)
 
 ## Publishing status (API로 확인한 값)
 
 - 스토어 등록정보 ko-KR / en-US: 설정됨
 - 연락처 웹사이트/이메일: 설정됨
-- 내부 테스트 트랙 1.00 (1): **completed** (draft 아님)
-- 콘텐츠 등급 / 앱 콘텐츠 개인정보처리방침 폼: 콘솔 UI 필요
-- 프로덕션: 위 폼이 끝난 뒤에만 승격
+- 데이터 안전: **제출됨**
+- 내부 테스트 트랙 1.00 (1): **completed**
+- 콘텐츠 등급 / 광고 / 대상 연령 / 앱 콘텐츠 개인정보처리방침 폼: 콘솔 UI
+- 프로덕션: 위 폼이 끝나기 전에는 `FAILED_PRECONDITION`
 
 ## Before first upload checklist
 
