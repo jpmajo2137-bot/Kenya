@@ -1,18 +1,10 @@
 import { useState } from 'react'
-import type { AppStateV3, NativeLang, TargetLang } from '../lib/types'
-import { LEARNABLE_BY_NATIVE } from '../lib/types'
+import type { AppStateV3 } from '../lib/types'
 import type { Action } from '../app/state'
 import { Button } from '../components/Button'
 import { useToast } from '../components/Toast'
 import { t, type Lang } from '../lib/i18n'
 import { resetConsentAndShowForm, getAdPersonalization } from '../lib/admob'
-
-const NATIVE_OPTIONS: NativeLang[] = ['ko', 'en', 'sw']
-const NATIVE_LABEL: Record<NativeLang, Record<Lang, string>> = {
-  ko: { sw: 'Kikorea', ko: '한국어', en: 'Korean' },
-  en: { sw: 'Kiingereza', ko: '영어', en: 'English' },
-  sw: { sw: 'Kiswahili', ko: '스와힐리어', en: 'Swahili' },
-}
 
 export function SettingsScreen({
   state,
@@ -74,42 +66,6 @@ export function SettingsScreen({
             onChange={(e) => dispatch({ type: 'settings', patch: { showEnglish: e.target.checked } })}
           />
         </label>
-
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <div className="text-sm font-extrabold text-white">{t('nativeLangLabel', lang)}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {NATIVE_OPTIONS.map((nl) => (
-              <Button
-                key={nl}
-                variant={state.settings.nativeLang === nl ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => {
-                  const allowed = LEARNABLE_BY_NATIVE[nl]
-                  const targetLang: TargetLang = allowed.includes(state.settings.targetLang)
-                    ? state.settings.targetLang
-                    : allowed[0]
-                  dispatch({ type: 'settings', patch: { nativeLang: nl, targetLang } })
-                }}
-              >
-                {NATIVE_LABEL[nl][lang]}
-              </Button>
-            ))}
-          </div>
-
-          <div className="mt-4 text-sm font-extrabold text-white">{t('targetLangLabel', lang)}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {LEARNABLE_BY_NATIVE[state.settings.nativeLang].map((tl) => (
-              <Button
-                key={tl}
-                variant={state.settings.targetLang === tl ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => dispatch({ type: 'settings', patch: { targetLang: tl } })}
-              >
-                {NATIVE_LABEL[tl][lang]}
-              </Button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* 광고 설정 */}

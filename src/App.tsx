@@ -3,21 +3,17 @@ import { Component, useEffect, useReducer, useRef, useState } from 'react'
 import { ToastProvider } from './components/Toast'
 import { cn } from './components/cn'
 import { loadState, loadStateAsync, saveState } from './lib/storage'
-import type { AppStateV3, NativeLang, TargetLang, VersionKey } from './lib/types'
-import { LEARNABLE_BY_NATIVE, currentVersionKey } from './lib/types'
+import type { AppStateV3 } from './lib/types'
+import { currentVersionKey } from './lib/types'
 import { createSeedState, getActiveSlice, reducer } from './app/state'
 import { t, type Lang } from './lib/i18n'
 import { SettingsScreen } from './screens/SettingsScreen'
-import { WordbookTab } from './screens/WordbookTab'
-import { QuizScreen } from './screens/QuizScreen'
-import { WrongNoteScreen } from './screens/WrongNoteScreen'
-import { DictionaryScreen } from './screens/DictionaryScreen'
 import { OxfordAllWordsDayList } from './screens/OxfordAllWordsDayList'
 import { OxfordQuizScreen } from './screens/OxfordQuizScreen'
 import { OxfordWrongNoteScreen } from './screens/OxfordWrongNoteScreen'
 import { OxfordDictionaryScreen } from './screens/OxfordDictionaryScreen'
 import { HangeulScreen } from './screens/HangeulScreen'
-import { isFirstRun, markFirstRunDone, detectInitialLang, DEFAULT_INITIAL_LANG_PAIR } from './lib/detectLang'
+import { isFirstRun, markFirstRunDone } from './lib/detectLang'
 import { startAdMobService, stopAdTimer, maybeShowInterstitialAd } from './lib/admob'
 import { isOnline, onOnlineStatusChange } from './lib/offlineCache'
 import { App as CapApp } from '@capacitor/app'
@@ -30,20 +26,10 @@ import { addUsageMs, shouldShowReviewPrompt } from './lib/reviewPrompt'
 type TopTab = AppStateV3['settings']['topTab']
 type BottomTab = AppStateV3['settings']['bottomTab']
 
-const NATIVE_LANG_OPTIONS: NativeLang[] = ['ko', 'en', 'sw']
-
-const LANG_LABEL: Record<NativeLang | TargetLang, Record<Lang, string>> = {
-  ko: { sw: 'Kikorea', ko: '한국어', en: 'Korean' },
-  en: { sw: 'Kiingereza', ko: '영어', en: 'English' },
-  sw: { sw: 'Kiswahili', ko: '스와힐리어', en: 'Swahili' },
-}
-
-const APP_TITLE: Record<VersionKey, string> = {
-  'sw-ko': 'Kujifunza Kikorea kwa Kiswahili',
-  'ko-sw': '스와힐리어 단어장',
-  'en-ko': 'Learn Korean in English',
-  'ko-en': '영어 단어장',
-}
+/** 이 앱은 한국어→영어(Oxford 5000) 전용 */
+const APP_TITLE = '영어 단어장'
+const FIXED_NATIVE_LANG = 'ko' as const
+const FIXED_TARGET_LANG = 'en' as const
 
 // ErrorBoundary for catching React errors
 interface ErrorBoundaryState {
@@ -155,30 +141,6 @@ function PillButton({
   )
 }
 
-function LangButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button
-      className={cn(
-        'flex-1 h-9 sm:h-10 rounded-xl px-2 text-[11px] sm:text-xs font-extrabold tracking-tight transition active:scale-95 ring-1 touch-target whitespace-nowrap',
-        active
-          ? 'bg-[rgb(var(--purple))] text-white ring-white/30'
-          : 'bg-[rgb(70,85,115)] text-white hover:bg-[rgb(90,105,135)] ring-white/20',
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  )
-}
-
 function NavButton({
   active,
   icon,
@@ -210,7 +172,6 @@ function AppInner() {
   const [state, dispatch] = useReducer(reducer, undefined, useInitialState)
   const [hydrated, setHydrated] = useState(false)
   const [resetKey, setResetKey] = useState(0)
-  const [langDetected, setLangDetected] = useState(!isFirstRun())
   const [online, setOnline] = useState(isOnline())
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const restoring = useRef(false)
@@ -266,14 +227,29 @@ function AppInner() {
         if (loaded) {
           dispatch({ type: 'hydrate', state: loaded })
         }
-        // 앱 시작 시 항상 홈 화면으로
-        dispatch({ type: 'settings', patch: { topTab: 'home', bottomTab: 'wordbook' } })
+        // 앱 시작 시 항상 홈 화면 + 한국어→영어 고정
+        dispatch({
+          type: 'settings',
+          patch: {
+            topTab: 'home',
+            bottomTab: 'wordbook',
+            nativeLang: FIXED_NATIVE_LANG,
+            targetLang: FIXED_TARGET_LANG,
+          },
+        })
         setHydrated(true)
       })
       .catch(() => {
         if (!cancelled) {
-          // 앱 시작 시 항상 홈 화면으로
-          dispatch({ type: 'settings', patch: { topTab: 'home', bottomTab: 'wordbook' } })
+          dispatch({
+            type: 'settings',
+            patch: {
+              topTab: 'home',
+              bottomTab: 'wordbook',
+              nativeLang: FIXED_NATIVE_LANG,
+              targetLang: FIXED_TARGET_LANG,
+            },
+          })
           setHydrated(true)
         }
       })
@@ -282,45 +258,22 @@ function AppInner() {
     }
   }, [])
   
-  // 첫 실행 시 언어 자동 감지
+  // 한국어→영어 전용으로 고정 (언어 버전 선택 없음).
+  // hydrate 이후에도 이전 로컬 저장값이 다른 조합이면 덮어쓴다.
   useEffect(() => {
-    if (!isFirstRun()) {
-      setLangDetected(true)
-      return
+    if (
+      state.settings.nativeLang !== FIXED_NATIVE_LANG ||
+      state.settings.targetLang !== FIXED_TARGET_LANG
+    ) {
+      dispatch({
+        type: 'settings',
+        patch: { nativeLang: FIXED_NATIVE_LANG, targetLang: FIXED_TARGET_LANG },
+      })
     }
+  }, [state.settings.nativeLang, state.settings.targetLang])
 
-    // 최대 2초 내에 언어 감지 완료 (Edge 등에서 빠르게 로드되도록)
-    const timeoutId = setTimeout(() => {
-      console.log('[Lang] 타임아웃 - 기본값 사용')
-      markFirstRunDone()
-      setLangDetected(true)
-    }, 2000)
-
-    detectInitialLang().then((pair) => {
-      clearTimeout(timeoutId)
-      console.log('[Lang] 감지 완료:', pair)
-      dispatch({
-        type: 'settings',
-        patch: { nativeLang: pair.nativeLang, targetLang: pair.targetLang },
-      })
-      markFirstRunDone()
-      setLangDetected(true)
-    }).catch((err) => {
-      clearTimeout(timeoutId)
-      console.log('[Lang] 감지 실패:', err)
-      // 감지 실패 시 기본값(en-ko)로 보정
-      dispatch({
-        type: 'settings',
-        patch: {
-          nativeLang: DEFAULT_INITIAL_LANG_PAIR.nativeLang,
-          targetLang: DEFAULT_INITIAL_LANG_PAIR.targetLang,
-        },
-      })
-      markFirstRunDone()
-      setLangDetected(true)
-    })
-
-    return () => clearTimeout(timeoutId)
+  useEffect(() => {
+    if (isFirstRun()) markFirstRunDone()
   }, [])
 
   // AdMob 서비스 초기화
@@ -468,44 +421,12 @@ function AppInner() {
     maybeShowInterstitialAd()
   }
 
-  const setNativeLang = (next: NativeLang) => {
-    // 모국어 버튼 클릭 시 기본 학습 언어:
-    //   - 한국어 사용자 → 영어 (ko-en)
-    //   - 그 외(en/sw)는 LEARNABLE_BY_NATIVE 정의 순서대로
-    let target: TargetLang
-    if (next === 'ko') {
-      target = 'en'
-    } else {
-      const allowed = LEARNABLE_BY_NATIVE[next]
-      target = allowed.includes(state.settings.targetLang)
-        ? state.settings.targetLang
-        : allowed[0]
-    }
-    setResetKey((k) => k + 1)
-    dispatch({
-      type: 'settings',
-      patch: {
-        nativeLang: next,
-        targetLang: target,
-        topTab: 'home',
-        bottomTab: 'wordbook',
-      },
-    })
-  }
-
-  const setTargetLang = (next: TargetLang) => {
-    setResetKey((k) => k + 1)
-    dispatch({
-      type: 'settings',
-      patch: { targetLang: next, topTab: 'home', bottomTab: 'wordbook' },
-    })
-  }
-
-  const lang: Lang = state.settings.nativeLang
-  const versionKey = currentVersionKey(state.settings)
+  const lang: Lang = 'ko'
+  const versionKey = currentVersionKey({
+    nativeLang: FIXED_NATIVE_LANG,
+    targetLang: FIXED_TARGET_LANG,
+  })
   const slice = getActiveSlice(state)
-  const targetOptions = LEARNABLE_BY_NATIVE[state.settings.nativeLang]
-  const isOxfordVersion = versionKey === 'en-ko' || versionKey === 'ko-en'
 
   // Back navigation handling: push history on tab change, popstate restores previous tab.
   useEffect(() => {
@@ -545,25 +466,7 @@ function AppInner() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="text-4xl mb-4">📦</div>
-          <div className="text-white/70 text-lg font-semibold">
-            {state.settings.nativeLang === 'sw'
-              ? 'Inapakia data...'
-              : state.settings.nativeLang === 'en'
-                ? 'Loading data...'
-                : '데이터 불러오는 중...'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // 첫 실행 시 언어 감지 중이면 로딩 화면 표시
-  if (!langDetected) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">🌍</div>
-          <div className="text-white/70 text-lg font-semibold">Detecting language...</div>
+          <div className="text-white/70 text-lg font-semibold">데이터 불러오는 중...</div>
         </div>
       </div>
     )
@@ -624,47 +527,12 @@ function AppInner() {
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <img
                 src="/logo.png"
-                alt={APP_TITLE[versionKey]}
+                alt={APP_TITLE}
                 className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover shrink-0"
               />
               <div className="app-title text-base sm:text-xl leading-tight truncate">
-                {APP_TITLE[versionKey]}
+                {APP_TITLE}
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-3 sm:mt-4 rounded-2xl p-2 app-banner backdrop-blur space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] sm:text-xs font-bold text-white/60 px-1.5 shrink-0">
-              {t('nativeLangLabel', lang)}
-            </span>
-            <div className="flex flex-1 gap-1">
-              {NATIVE_LANG_OPTIONS.map((nl) => (
-                <LangButton
-                  key={nl}
-                  active={state.settings.nativeLang === nl}
-                  onClick={() => setNativeLang(nl)}
-                >
-                  {LANG_LABEL[nl][lang]}
-                </LangButton>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] sm:text-xs font-bold text-white/60 px-1.5 shrink-0">
-              {t('targetLangLabel', lang)}
-            </span>
-            <div className="flex flex-1 gap-1">
-              {targetOptions.map((tl) => (
-                <LangButton
-                  key={tl}
-                  active={state.settings.targetLang === tl}
-                  onClick={() => setTargetLang(tl)}
-                >
-                  {LANG_LABEL[tl][lang]}
-                </LangButton>
-              ))}
             </div>
           </div>
         </div>
@@ -678,112 +546,54 @@ function AppInner() {
           {topTab === 'settings' ? <SettingsScreen state={state} dispatch={dispatch} lang={lang} /> : null}
           {topTab === 'hangeul' ? <HangeulScreen key={`hangeul-${resetKey}`} lang={lang} /> : null}
           {topTab === 'home' ? (
-            isOxfordVersion ? (
-              <>
-                {bottomTab === 'wordbook' ? (
-                  <OxfordAllWordsDayList
-                    key={`ox-wb-${resetKey}-${versionKey}`}
-                    lang={lang}
-                    nativeLang={state.settings.nativeLang}
-                    targetLang={state.settings.targetLang}
-                    showEnglish={state.settings.showEnglish}
-                    decks={slice.decks}
-                    items={slice.items}
-                    wrong={slice.wrong}
-                    dispatch={dispatch}
-                  />
-                ) : null}
-                {bottomTab === 'quiz' ? (
-                  <OxfordQuizScreen
-                    key={`ox-quiz-${resetKey}-${versionKey}`}
-                    decks={slice.decks}
-                    items={slice.items}
-                    wrong={slice.wrong}
-                    quizCount={state.settings.quizCount}
-                    quizSource={state.settings.quizSource}
-                    dispatch={dispatch}
-                    lang={lang}
-                    nativeLang={state.settings.nativeLang}
-                    targetLang={state.settings.targetLang}
-                  />
-                ) : null}
-                {bottomTab === 'wrong' ? (
-                  <OxfordWrongNoteScreen
-                    key={`ox-wrong-${resetKey}-${versionKey}`}
-                    wrong={slice.wrong}
-                    dispatch={dispatch}
-                    lang={lang}
-                    targetLang={state.settings.targetLang}
-                  />
-                ) : null}
-                {bottomTab === 'dictionary' ? (
-                  <OxfordDictionaryScreen
-                    key={`ox-dict-${resetKey}-${versionKey}`}
-                    lang={lang}
-                    targetLang={state.settings.targetLang}
-                    decks={slice.decks}
-                    items={slice.items}
-                    dispatch={dispatch}
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                {bottomTab === 'wordbook' ? (
-                  <WordbookTab
-                    key={`wordbook-${resetKey}-${versionKey}`}
-                    decks={slice.decks}
-                    items={slice.items}
-                    showEnglish={state.settings.showEnglish}
-                    dispatch={dispatch}
-                    lang={lang}
-                    meaningLang={state.settings.meaningLang}
-                    nativeLang={state.settings.nativeLang}
-                    targetLang={state.settings.targetLang}
-                  />
-                ) : null}
-                {bottomTab === 'quiz' ? (
-                  <QuizScreen
-                    key={`quiz-${resetKey}-${versionKey}`}
-                    decks={slice.decks}
-                    items={slice.items}
-                    wrong={slice.wrong}
-                    now={state.now}
-                    dueOnly={state.settings.dueOnly}
-                    meaningLang={state.settings.meaningLang}
-                    quizCount={state.settings.quizCount}
-                    quizSource={state.settings.quizSource}
-                    dispatch={dispatch}
-                    lang={lang}
-                    nativeLang={state.settings.nativeLang}
-                    targetLang={state.settings.targetLang}
-                  />
-                ) : null}
-                {bottomTab === 'wrong' ? (
-                  <WrongNoteScreen
-                    key={`wrong-${resetKey}-${versionKey}`}
-                    decks={slice.decks}
-                    items={slice.items}
-                    wrong={slice.wrong}
-                    dispatch={dispatch}
-                    lang={lang}
-                    meaningLang={state.settings.meaningLang}
-                    nativeLang={state.settings.nativeLang}
-                    targetLang={state.settings.targetLang}
-                  />
-                ) : null}
-                {bottomTab === 'dictionary' ? (
-                  <DictionaryScreen
-                    key={`dict-${resetKey}-${versionKey}`}
-                    lang={lang}
-                    decks={slice.decks}
-                    dispatch={dispatch}
-                    nativeLang={state.settings.nativeLang}
-                    targetLang={state.settings.targetLang}
-                  />
-                ) : null}
-              </>
-            )
+            <>
+              {bottomTab === 'wordbook' ? (
+                <OxfordAllWordsDayList
+                  key={`ox-wb-${resetKey}-${versionKey}`}
+                  lang={lang}
+                  nativeLang={FIXED_NATIVE_LANG}
+                  targetLang={FIXED_TARGET_LANG}
+                  showEnglish={state.settings.showEnglish}
+                  decks={slice.decks}
+                  items={slice.items}
+                  wrong={slice.wrong}
+                  dispatch={dispatch}
+                />
+              ) : null}
+              {bottomTab === 'quiz' ? (
+                <OxfordQuizScreen
+                  key={`ox-quiz-${resetKey}-${versionKey}`}
+                  decks={slice.decks}
+                  items={slice.items}
+                  wrong={slice.wrong}
+                  quizCount={state.settings.quizCount}
+                  quizSource={state.settings.quizSource}
+                  dispatch={dispatch}
+                  lang={lang}
+                  nativeLang={FIXED_NATIVE_LANG}
+                  targetLang={FIXED_TARGET_LANG}
+                />
+              ) : null}
+              {bottomTab === 'wrong' ? (
+                <OxfordWrongNoteScreen
+                  key={`ox-wrong-${resetKey}-${versionKey}`}
+                  wrong={slice.wrong}
+                  dispatch={dispatch}
+                  lang={lang}
+                  targetLang={FIXED_TARGET_LANG}
+                />
+              ) : null}
+              {bottomTab === 'dictionary' ? (
+                <OxfordDictionaryScreen
+                  key={`ox-dict-${resetKey}-${versionKey}`}
+                  lang={lang}
+                  targetLang={FIXED_TARGET_LANG}
+                  decks={slice.decks}
+                  items={slice.items}
+                  dispatch={dispatch}
+                />
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
