@@ -1,50 +1,5 @@
-Jifunze Kikorea kwa Kiswahili, jifunze Kiingereza kwa Kikorea, na jenga msamiati wa Kikorea, Kiingereza na Kiswahili kwa programu moja ya kujifunza lugha.
+Learn Oxford 5000 English vocabulary with Korean meanings.
 
-Programu hii imeundwa kwa kujifunza maneno kwa haraka na kwa kurudia. Chagua lugha yako ya asili na lugha unayotaka kujifunza, kisha tumia kamusi, vitabu vya maneno, sauti, Hangeul, kuis na daftari la makosa kujenga msamiati wako.
+This app is for Korean speakers learning English words using the Oxford 5000 list, with day-based study, quizzes, wrong-note review, and dictionary search.
 
-Matoleo ya kujifunza yanayoungwa mkono:
-
-• Mzungumzaji wa Kiingereza anayejifunza Kikorea
-• Mzungumzaji wa Kikorea anayejifunza Kiingereza
-• Mzungumzaji wa Kiswahili anayejifunza Kikorea
-• Mzungumzaji wa Kikorea anayejifunza Kiswahili
-
-Vipengele muhimu:
-
-• Kamusi na vitabu vya maneno vya Kikorea
-• Msamiati wa Kiingereza kwa wanaozungumza Kikorea
-• Msamiati wa Kiswahili na Kikorea
-• Jifunze Hangeul: konsonanti, irabu na silabi
-• Sauti ya kusikiliza matamshi ya maneno
-• Kadi za maneno kwa kujifunza haraka
-• Kuis za maneno: maswali 5, 10, 20 au 50
-• Daftari la makosa kwa kurudia maneno uliyokosea
-• Tafuta maneno kama kamusi ya Kikorea Kiingereza, Kiingereza Kikorea, Kikorea Kiswahili na Kiswahili Kikorea
-• Maneno ya mwanzo, msingi, kati na kiwango cha juu
-• Mada za maisha ya kila siku, safari, biashara, ununuzi, dharura, chakula, familia, namba, muda, afya, nyumba na usafiri
-• Kujifunza nomino, vitenzi, vivumishi na vielezi
-• Mwongozo wa matamshi ya Kikorea kwa wanaoanza
-
-Kwa wanaojifunza Kikorea:
-
-Anza na Hangeul, kisha jifunze maneno ya Kikorea kwa hatua. Sikiliza matamshi ya Kikorea, soma maana, fanya kuis na rudia maneno magumu. Programu hii inafaa kwa kujifunza Kikorea kwa Kiingereza au kujifunza Kikorea kwa Kiswahili.
-
-Kwa wanaojifunza Kiingereza:
-
-Watumiaji wa Kikorea wanaweza kujifunza maneno ya Kiingereza, maana ya Kikorea, mifano na matamshi. Tumia kama kamusi ya Kiingereza, kitabu cha maneno ya Kiingereza, kuis ya Kiingereza na zana ya kukariri msamiati.
-
-Kwa wanaojifunza Kiswahili:
-
-Watumiaji wa Kikorea wanaweza kujifunza maneno ya Kiswahili, na wazungumzaji wa Kiswahili wanaweza kujifunza maneno ya Kikorea. Ni zana rahisi kwa kamusi ya Kikorea Kiswahili, kamusi ya Kiswahili Kikorea, msamiati wa safari, msamiati wa kila siku na maneno muhimu.
-
-Inafaa kwa:
-
-• Wanaoanza kujifunza Kikorea na Hangeul
-• Wanaotaka kujifunza maneno ya Kikorea kwa Kiswahili
-• Wanaotaka kujifunza maneno ya Kikorea kwa Kiingereza
-• Wanaotaka kujifunza Kiingereza kwa Kikorea
-• Wanaotaka kujifunza Kiswahili kwa Kikorea
-• Wanafunzi wanaopenda kuis, kadi za maneno, sauti na kurudia makosa
-• Wasafiri wanaohitaji maneno ya Kikorea, Kiingereza au Kiswahili
-
-Programu inalenga msamiati, Hangeul, matamshi, kamusi, kuis na kurudia. Jifunze maneno ya Kikorea, maneno ya Kiingereza na maneno ya Kiswahili kila siku, kisha rudi kwenye daftari la makosa hadi maneno yawe rahisi.
+Package: com.jph.oxfordenglish

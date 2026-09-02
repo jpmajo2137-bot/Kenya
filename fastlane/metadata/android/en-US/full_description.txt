@@ -1,55 +1,24 @@
-Learn Korean in English, study English from Korean, and build Korean-Swahili vocabulary in one focused language learning app.
+Learn Oxford 5000 English vocabulary with Korean meanings.
 
-This app is made for learners who want practical word study without a complicated course screen. Choose your native language and learning language, then study vocabulary with wordbooks, Hangul practice, pronunciation audio, quizzes, a dictionary, and wrong-note review.
+Key features
 
-Supported learning versions:
+• About 4,958 Oxford 5000 English words
+• Levels: beginner, elementary, intermediate, advanced
+• Day-based study plans
+• Flashcards for quick review
+• Quizzes with 5 / 10 / 20 / 50 questions
+• Wrong-note review for missed words
+• English ↔ Korean dictionary search
+• Category-based wordbooks
 
-• English native speakers learning Korean
-• Korean native speakers learning English
-• Swahili / Kiswahili native speakers learning Korean
-• Korean native speakers learning Swahili / Kiswahili
+Who it is for
 
-Main features:
-
-• Korean vocabulary and English vocabulary wordbooks
-• Korean to English and English to Korean study modes
-• Korean to Swahili and Swahili to Korean study modes
-• Learn Hangul consonants, vowels, syllables and pronunciation
-• Audio buttons for listening and pronunciation practice
-• Flashcard-style word learning for quick review
-• Vocabulary quizzes with 5, 10, 20 or 50 questions
-• Wrong Notes to repeat the words you missed
-• Searchable dictionary for Korean, English and Swahili words
-• Beginner, elementary, intermediate and advanced word lists
-• Topic wordbooks for daily life, travel, business, shopping, emergency, food, family, numbers, time, health, transport and more
-• Noun, verb, adjective and adverb practice
-• Korean romanization guides where they help beginners read the word
-• Progress-friendly review for repeated vocabulary learning
-
-Use it as a Korean vocabulary app, an English vocabulary app, a Korean dictionary, an English Korean dictionary, a Korean flashcards app, a Hangul learning app, a Swahili Korean dictionary, or a daily word quiz for self-study.
-
-For Korean learners:
-
-Start with Hangul, then build Korean words step by step. Practice Korean pronunciation, Korean meanings, Korean phrases, daily Korean words, travel Korean, business Korean, shopping Korean and emergency Korean vocabulary. If you are an English speaker, the app explains Korean through English. If you are a Swahili speaker, you can study Korean from Kiswahili.
-
-For English learners:
-
-Korean speakers can study English words with Korean meanings, examples, audio and quizzes. Use the app as an English wordbook, English vocabulary builder, English quiz, English dictionary and English review notebook.
-
-For Swahili and Kiswahili learners:
-
-The app supports Swahili-Korean and Korean-Swahili vocabulary study. Learn Korean words from Swahili, review Kiswahili meanings from Korean, and practice useful words for daily life, travel, family, numbers, food, home, health and transport.
-
-Good for:
-
-• Beginners who want to learn Korean words and Hangul
 • Korean speakers learning English vocabulary
-• Swahili speakers learning Korean vocabulary
-• Korean speakers learning Swahili vocabulary
-• Travelers who need useful Korean, English or Swahili words
-• Students who want a simple vocabulary quiz app
-• Learners who want audio, examples, dictionary search and wrong-note review
+• Learners who want a structured Oxford word list
+• Users who like quizzes and spaced review
 
-This app focuses on vocabulary, pronunciation, Hangul and repeated review. It is useful for daily language study, Korean word memorization, English word memorization, Swahili word memorization, Korean pronunciation practice, dictionary lookup and quiz-based learning.
+App identity
 
-Search naturally, study quickly, and keep returning to the words you got wrong until they become familiar.
+• Name: Oxford English Words / 영어 단어장
+• Package: com.jph.oxfordenglish
+• Direction: Korean → English

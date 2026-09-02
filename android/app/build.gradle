@@ -13,10 +13,10 @@ if (keystorePropertiesFile.exists()) {
     hasKeystoreProps = true
 } else {
     // 환경 변수 폴백 (CI/CD 환경)
-    def envStorePath = System.getenv("KENYA_KEYSTORE_PATH")
-    def envStorePassword = System.getenv("KENYA_KEYSTORE_PASSWORD")
-    def envKeyAlias = System.getenv("KENYA_KEY_ALIAS")
-    def envKeyPassword = System.getenv("KENYA_KEY_PASSWORD")
+    def envStorePath = System.getenv("OXFORD_KEYSTORE_PATH") ?: System.getenv("KENYA_KEYSTORE_PATH")
+    def envStorePassword = System.getenv("OXFORD_KEYSTORE_PASSWORD") ?: System.getenv("KENYA_KEYSTORE_PASSWORD")
+    def envKeyAlias = System.getenv("OXFORD_KEY_ALIAS") ?: System.getenv("KENYA_KEY_ALIAS")
+    def envKeyPassword = System.getenv("OXFORD_KEY_PASSWORD") ?: System.getenv("KENYA_KEY_PASSWORD")
     if (envStorePath && envStorePassword && envKeyAlias && envKeyPassword) {
         keystoreProperties['storeFile'] = envStorePath
         keystoreProperties['storePassword'] = envStorePassword
@@ -27,14 +27,15 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.kenyavocab.app"
+    namespace = "com.jph.oxfordenglish"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.kenyavocab.app"
+        applicationId "com.jph.oxfordenglish"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 100
-        versionName "8.29"
+        // 신규 스토어 앱 — versionCode/Name 을 1부터 시작
+        versionCode 1
+        versionName "1.00"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -42,7 +43,7 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
         // 보안: 다국어 리소스를 명시적으로 제한해 공격 표면 축소
-        resConfigs "en", "ko", "sw"
+        resConfigs "en", "ko"
     }
     
     signingConfigs {

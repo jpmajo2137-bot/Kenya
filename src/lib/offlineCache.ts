@@ -3,7 +3,7 @@
  * 캐시된 데이터 읽기 전용 (다운로드 기능 제거됨)
  */
 
-const DB_NAME = 'k-kiswahili-offline'
+const DB_NAME = 'oxford-en-offline'
 const DB_VERSION = 4
 const STORE_NAME = 'vocab'
 const META_STORE = 'meta'

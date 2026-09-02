@@ -1,5 +1,5 @@
 /**
- * K-Kiswahili-Words Security Utilities
+ * Oxford English Words Security Utilities
  * XSS 방지, 입력값 검증, 콘솔 잠금, 민감정보 마스킹
  */
 

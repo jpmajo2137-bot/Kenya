@@ -1,5 +1,6 @@
 import { AppUpdate, AppUpdateAvailability, FlexibleUpdateInstallStatus } from '@capawesome/capacitor-app-update';
 import { Capacitor } from '@capacitor/core';
+import { PLAY_STORE_URL } from './appIdentity';
 
 export interface UpdateInfo {
   updateAvailable: boolean;
@@ -91,7 +92,7 @@ export async function completeFlexibleUpdate(): Promise<boolean> {
 export async function openAppStore(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
     // 웹에서는 플레이스토어 URL로 이동
-    window.open('https://play.google.com/store/apps/details?id=com.kenyavocab.app', '_blank');
+    window.open(PLAY_STORE_URL, '_blank');
     return;
   }
 
@@ -100,7 +101,7 @@ export async function openAppStore(): Promise<void> {
   } catch (error) {
     console.error('[AppUpdate] 앱스토어 열기 실패:', error);
     // 실패 시 URL로 이동
-    window.open('https://play.google.com/store/apps/details?id=com.kenyavocab.app', '_blank');
+    window.open(PLAY_STORE_URL, '_blank');
   }
 }
 

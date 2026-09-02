@@ -1,0 +1,33 @@
+/**
+ * 신규 스토어 앱 정체성 (Play Store / App Store).
+ * Android applicationId · iOS bundleId · Capacitor appId 와 동일해야 한다.
+ */
+export const APP_ID = 'com.jph.oxfordenglish'
+
+/** 스토어·네이티브 표시 이름 (한국어 시장 기본) */
+export const APP_DISPLAY_NAME = '영어 단어장'
+
+/** 영문 스토어 타이틀 */
+export const APP_DISPLAY_NAME_EN = 'Oxford English Words'
+
+/** PWA short_name */
+export const APP_SHORT_NAME = '영어 단어장'
+
+export const APP_DESCRIPTION_KO =
+  'Oxford 5000 기반 영어 단어를 한국어로 공부하는 단어장. Day별 학습, 퀴즈, 오답노트, 사전 검색을 지원합니다.'
+
+export const APP_DESCRIPTION_EN =
+  'Learn Oxford 5000 English words with Korean meanings. Day-based study, quizzes, wrong-note review, and dictionary search.'
+
+/** Play Store 상세 페이지 */
+export const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_ID}`
+
+/** App Store 검색용 (앱 등록 후 실제 ID로 교체) */
+export const APP_STORE_URL = `https://apps.apple.com/app/id000000000`
+
+/** 개인정보처리방침 / 데이터 삭제 요청 (Firebase Hosting) */
+export const PRIVACY_URL = 'https://jph-learn-korean.web.app/privacy'
+export const DELETE_DATA_URL = 'https://jph-learn-korean.web.app/delete-data'
+
+/** localStorage / IndexedDB 접두사 — 구 앱(kenya-vocab)과 분리 */
+export const STORAGE_PREFIX = 'oxford-en'

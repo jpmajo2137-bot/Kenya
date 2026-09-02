@@ -1,5 +1,7 @@
+import { STORAGE_PREFIX } from './appIdentity'
+
 /**
- * K-Kiswahili-Words Encryption Utility
+ * Oxford English Words Encryption Utility
  * AES-GCM 256bit 기반 로컬 데이터 암호화 (강화 버전)
  *
  * 보안 정책:
@@ -12,8 +14,8 @@
  *  - 복호화 실패시 평문 노출 금지 (예외 발생)
  */
 
-const KEY_STORAGE = 'kenya-vocab.key'
-const SALT_STORAGE = 'kenya-vocab.salt'
+const KEY_STORAGE = `${STORAGE_PREFIX}.key`
+const SALT_STORAGE = `${STORAGE_PREFIX}.salt`
 const VERSION_PREFIX = 'v2:'
 const LEGACY_PREFIXES = ['', 'OBF:']
 const PBKDF2_ITERATIONS = 600_000

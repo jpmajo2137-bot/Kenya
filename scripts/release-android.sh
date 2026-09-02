@@ -96,6 +96,16 @@ echo "ANDROID_HOME = ${ANDROID_HOME:-(미설정)}"
 java -version 2>&1 | head -1 || { echo "❌ Java 없음"; exit 1; }
 [ -d "${ANDROID_HOME:-}" ] || { echo "❌ Android SDK 없음 ($ANDROID_HOME)"; exit 1; }
 
+# ---------- 3.5 Firebase Android config ----------
+if [ ! -f "$ROOT_DIR/android/app/google-services.json" ]; then
+  if [ -f "$ROOT_DIR/native-config/google-services.json" ]; then
+    cp "$ROOT_DIR/native-config/google-services.json" "$ROOT_DIR/android/app/google-services.json"
+    echo "▶ native-config/google-services.json → android/app/ 복사"
+  else
+    echo "⚠️  android/app/google-services.json 없음 (Analytics 플러그인 미적용 가능)"
+  fi
+fi
+
 # ---------- 4. 웹 빌드 → Capacitor sync → AAB ----------
 echo ""
 echo "=== 1/3 웹 빌드 ==="

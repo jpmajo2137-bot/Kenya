@@ -12,11 +12,12 @@ import type {
 } from './types'
 import { ALL_VERSION_KEYS } from './types'
 import { encrypt, decrypt, isEncryptionSupported, generateHash, verifyHash } from './crypto'
+import { STORAGE_PREFIX } from './appIdentity'
 
-const KEY = 'kenya-vocab.state'
-const HASH_KEY = 'kenya-vocab.hash'
-const ENCRYPTED_FLAG = 'kenya-vocab.encrypted'
-const V2_BACKUP_KEY = 'kenya-vocab.state.v2.bak'
+const KEY = `${STORAGE_PREFIX}.state`
+const HASH_KEY = `${STORAGE_PREFIX}.hash`
+const ENCRYPTED_FLAG = `${STORAGE_PREFIX}.encrypted`
+const V2_BACKUP_KEY = `${STORAGE_PREFIX}.state.v2.bak`
 
 // 버전별 기본 단어장 이름 (state.ts와 동기 — 순환 의존을 피하려 여기 복사)
 function defaultDeckNamesForVersion(key: VersionKey): string[] {
@@ -299,7 +300,7 @@ export function clearStoredData(): void {
     localStorage.removeItem(KEY)
     localStorage.removeItem(HASH_KEY)
     localStorage.removeItem(ENCRYPTED_FLAG)
-    localStorage.removeItem('kenya-vocab.key')
+    localStorage.removeItem(`${STORAGE_PREFIX}.key`)
     localStorage.removeItem(V2_BACKUP_KEY)
   } catch {
     // ignore

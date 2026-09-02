@@ -1,6 +1,8 @@
 import { App as CapApp } from '@capacitor/app'
 
 // AdMob 설정
+// NOTE: 신규 패키지(com.jph.oxfordenglish)로 스토어 등록 시 AdMob 콘솔에서
+// 새 Android/iOS 앱을 만든 뒤 아래 유닛 ID를 교체하세요.
 const INTERSTITIAL_AD_UNIT_ID = 'ca-app-pub-1454258737058608/7937401936'
 const REWARDED_AD_UNIT_ID = 'ca-app-pub-1454258737058608/7355975678'
 const BANNER_AD_UNIT_ID = 'ca-app-pub-1454258737058608/1749267375'

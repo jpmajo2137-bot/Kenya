@@ -5,6 +5,14 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "/privacy", "destination": "/privacy.html" },
+      { "source": "/delete-data", "destination": "/delete-data.html" }
+    ]
+  },
   "emulators": {
     "firestore": {
       "host": "127.0.0.1",

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Learn Korean in English</string>
-    <string name="title_activity_main">Learn Korean in English</string>
-    <string name="package_name">com.kenyavocab.app</string>
-    <string name="custom_url_scheme">com.kenyavocab.app</string>
+    <string name="app_name">영어 단어장</string>
+    <string name="title_activity_main">영어 단어장</string>
+    <string name="package_name">com.jph.oxfordenglish</string>
+    <string name="custom_url_scheme">com.jph.oxfordenglish</string>
 </resources>

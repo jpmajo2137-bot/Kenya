@@ -7,7 +7,7 @@
 
 import { callEdgeFunction, isEdgeFunctionsConfigured, EdgeFunctionError } from './edgeFunctions'
 
-const TRANSLATE_DB_NAME = 'k-kiswahili-translate-cache'
+const TRANSLATE_DB_NAME = 'oxford-en-translate-cache'
 const TRANSLATE_DB_VERSION = 1
 const TRANSLATE_STORE = 'translations'
 

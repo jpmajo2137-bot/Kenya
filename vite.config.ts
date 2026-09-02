@@ -75,9 +75,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'vite.svg'],
       manifest: {
-        name: 'Learn Korean in English',
-        short_name: 'Korean English',
-        description: 'Learn Korean words and phrases in English with flashcards, quizzes, and audio.',
+        name: '영어 단어장',
+        short_name: '영어 단어장',
+        description: 'Oxford 5000 영어 단어를 한국어로 공부하는 단어장. Day별 학습, 퀴즈, 오답노트, 사전 검색.',
         theme_color: '#070a12',
         background_color: '#070a12',
         display: 'standalone',
