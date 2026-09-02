@@ -4,14 +4,14 @@
  */
 export const APP_ID = 'com.jph.oxfordenglish'
 
-/** 스토어·네이티브 표시 이름 (한국어 시장 기본) */
-export const APP_DISPLAY_NAME = '영어 단어장'
+/** 스토어·네이티브 표시 이름 */
+export const APP_DISPLAY_NAME = 'JHP 영어 단어 암기'
 
 /** 영문 스토어 타이틀 */
-export const APP_DISPLAY_NAME_EN = 'Oxford English Words'
+export const APP_DISPLAY_NAME_EN = 'JHP English Words'
 
 /** PWA short_name */
-export const APP_SHORT_NAME = '영어 단어장'
+export const APP_SHORT_NAME = 'JHP 영어암기'
 
 export const APP_DESCRIPTION_KO =
   'Oxford 5000 기반 영어 단어를 한국어로 공부하는 단어장. Day별 학습, 퀴즈, 오답노트, 사전 검색을 지원합니다.'
@@ -22,8 +22,9 @@ export const APP_DESCRIPTION_EN =
 /** Play Store 상세 페이지 */
 export const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_ID}`
 
-/** App Store 검색용 (앱 등록 후 실제 ID로 교체) */
-export const APP_STORE_URL = `https://apps.apple.com/app/id000000000`
+/** App Store Connect app id */
+export const APP_STORE_APP_ID = '6807980665'
+export const APP_STORE_URL = `https://apps.apple.com/app/id${APP_STORE_APP_ID}`
 
 /** 개인정보처리방침 / 데이터 삭제 요청 (Firebase Hosting) */
 export const PRIVACY_URL = 'https://jph-learn-korean.web.app/privacy'

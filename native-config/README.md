@@ -5,7 +5,7 @@
 | 항목 | 값 |
 |------|----|
 | Package / Bundle ID | `com.jph.oxfordenglish` |
-| Display name | `영어 단어장` |
+| Display name | `JHP 영어 단어 암기` |
 | English title | `Oxford English Words` |
 | Android versionCode | starts at `1` |
 | Android versionName | starts at `1.00` |

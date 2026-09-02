@@ -110,3 +110,7 @@ workbox-*.js
 # Data files (선택적)
 data/# Zip files
 *.zip
+.secrets/
+android/keystore/
+*.p8
+!native-config/

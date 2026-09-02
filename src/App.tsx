@@ -27,7 +27,7 @@ type TopTab = AppStateV3['settings']['topTab']
 type BottomTab = AppStateV3['settings']['bottomTab']
 
 /** 이 앱은 한국어→영어(Oxford 5000) 전용 */
-const APP_TITLE = '영어 단어장'
+const APP_TITLE = 'JHP 영어 단어 암기'
 const FIXED_NATIVE_LANG = 'ko' as const
 const FIXED_TARGET_LANG = 'en' as const
 

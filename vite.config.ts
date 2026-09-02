@@ -75,9 +75,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'vite.svg'],
       manifest: {
-        name: '영어 단어장',
-        short_name: '영어 단어장',
-        description: 'Oxford 5000 영어 단어를 한국어로 공부하는 단어장. Day별 학습, 퀴즈, 오답노트, 사전 검색.',
+        name: 'JHP 영어 단어 암기',
+        short_name: 'JHP 영어암기',
+        description: 'JHP 영어 단어 암기 — Oxford 5000 영어 단어를 한국어로 공부하는 단어장.',
         theme_color: '#070a12',
         background_color: '#070a12',
         display: 'standalone',

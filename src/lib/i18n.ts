@@ -2,7 +2,7 @@ export type Lang = 'sw' | 'ko' | 'en'
 
 const texts = {
   // App title
-  appTitle1: { sw: 'Oxford English Words', ko: '영어 단어장', en: 'Oxford English Words' },
+  appTitle1: { sw: 'JHP English Words', ko: 'JHP 영어 단어 암기', en: 'JHP English Words' },
   appTitle2: { sw: '', ko: '', en: '' },
 
   // Default deck name

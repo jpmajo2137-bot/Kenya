@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.jph.oxfordenglish',
-  appName: '영어 단어장',
+  appName: 'JHP 영어 단어 암기',
   webDir: 'dist',
   android: {
     // 보안: 자기 서명 인증서/HTTP 콘텐츠 거부
