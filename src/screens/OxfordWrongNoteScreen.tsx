@@ -12,6 +12,7 @@ import {
 } from '../lib/displayOverrides'
 import { t, type Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import { isKoEnOxford, queryOxfordKoEn } from '../lib/oxfordApi'
 import { getOxfordByIds, isOnline } from '../lib/offlineCache'
 import { romanizeKoreanText } from '../lib/koreanRomanization'
 import type { OxfordRow } from './OxfordCloudScreen'
@@ -95,7 +96,10 @@ export function OxfordWrongNoteScreen({
     const fetchRows = async () => {
       setLoading(true)
       try {
-        if (isOnline() && supabase) {
+        if (isKoEnOxford(targetLang)) {
+          const { rows } = await queryOxfordKoEn({ ids: mergedWrongIds })
+          if (!cancelled) setRows(rows)
+        } else if (isOnline() && supabase) {
           const { data } = await supabase.from('oxford_vocab').select('*').in('id', mergedWrongIds)
           if (!cancelled) setRows((data ?? []) as OxfordRow[])
         } else {
@@ -112,7 +116,7 @@ export function OxfordWrongNoteScreen({
     return () => {
       cancelled = true
     }
-  }, [mergedWrongIds])
+  }, [mergedWrongIds, targetLang])
 
   const wrongMap = useMemo(() => new Map(wrong.map((w) => [w.id, w])), [wrong])
 

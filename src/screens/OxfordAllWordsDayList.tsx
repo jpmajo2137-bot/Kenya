@@ -7,6 +7,7 @@ import { t, type Lang } from '../lib/i18n'
 import type { NativeLang, TargetLang, Deck, VocabItem } from '../lib/types'
 import type { Action } from '../app/state'
 import { supabase } from '../lib/supabase'
+import { isKoEnOxford, loadOxfordKoEnAll, queryOxfordKoEn, filterOxfordRows } from '../lib/oxfordApi'
 import { OxfordCloudScreen, type OxfordRow } from './OxfordCloudScreen'
 import {
   FlashcardScreen,
@@ -245,7 +246,43 @@ export function OxfordAllWordsDayList({
       const posEntries = CATEGORY_INFO.filter((c) => c.group === 'pos')
 
       try {
-        if (online && supabase) {
+        if (isKoEnOxford(targetLang)) {
+          const all = await loadOxfordKoEnAll()
+          setTotalCount(all.length)
+          for (const k of dbCats) {
+            next[k] = all.filter((r) => r.category === k).length
+          }
+          await Promise.all(
+            posEntries.map(async (entry) => {
+              const posKey = entry.filter.slice('pos:'.length)
+              next[entry.key] = all.filter((r) => (r.pos ?? '').toLowerCase() === posKey).length
+            }),
+          )
+          const classifiedEntries = CATEGORY_INFO.filter((c) =>
+            c.filter.startsWith('classified:'),
+          )
+          for (const entry of classifiedEntries) {
+            const topic = entry.filter.slice('classified:'.length)
+            const words = getOxfordWordsByTopic(topic)
+            if (words.length === 0) {
+              next[entry.key] = 0
+              continue
+            }
+            next[entry.key] = filterOxfordRows(all, { words }).length
+          }
+          for (const entry of CATEGORY_INFO.filter((c) => c.filter.startsWith('ordered:'))) {
+            const orderedKey = entry.filter.slice('ordered:'.length)
+            const words = orderedKey === '숫자1-50' ? NUMBER_WORDS_1_50 : []
+            if (words.length === 0) {
+              next[entry.key] = 0
+              continue
+            }
+            const matched = filterOxfordRows(all, { words })
+            next[entry.key] = koreanIsTarget
+              ? matched.length
+              : new Set(matched.map((r) => (r.word ?? '').toLowerCase().trim()).filter(Boolean)).size
+          }
+        } else if (online && supabase) {
           const totalRes = await supabase
             .from('oxford_vocab')
             .select('*', { count: 'exact', head: true })
@@ -381,7 +418,7 @@ export function OxfordAllWordsDayList({
       }
     }
     void fetchAll()
-  }, [online, koreanIsTarget])
+  }, [online, koreanIsTarget, targetLang])
 
   const wordsLabel = WORDS_LABEL[lang]
   const dayLabel = DAY_LABEL[lang]
@@ -429,8 +466,18 @@ export function OxfordAllWordsDayList({
           : ['__none__']
         : null
 
-      if (online && supabase) {
-        let q = supabase
+      if (isKoEnOxford(targetLang) || (online && supabase)) {
+        if (isKoEnOxford(targetLang)) {
+          const { rows } = await queryOxfordKoEn({
+            category: effectiveCategory || undefined,
+            pos: effectivePos || undefined,
+            words: wordList,
+            offset: start,
+            limit: WORDS_PER_DAY,
+          })
+          setFlashRows(rows)
+        } else {
+        let q = supabase!
           .from('oxford_vocab')
           .select('*')
           .order('order_index', { ascending: true })
@@ -439,6 +486,7 @@ export function OxfordAllWordsDayList({
         if (wordList) q = q.in('word', wordList)
         const { data } = await q.range(start, end)
         setFlashRows((data ?? []) as OxfordRow[])
+        }
       } else {
         let cached = await getOxfordFromCache(
           undefined,

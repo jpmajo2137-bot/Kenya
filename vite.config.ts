@@ -42,6 +42,7 @@ export default defineConfig({
           // 단일 거대 의존성은 자체 청크로 → 첫 화면이 필요할 때만 lazy 로드 가능
           if (id.includes('@google-cloud/text-to-speech')) return 'vendor-gcp-tts'
           if (id.includes('node_modules/openai/')) return 'vendor-openai'
+          if (id.includes('firebase/')) return 'vendor-firebase'
           if (id.includes('@supabase/')) return 'vendor-supabase'
           if (id.includes('@capacitor') || id.includes('@capawesome')) return 'vendor-capacitor'
           if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
@@ -116,6 +117,10 @@ export default defineConfig({
           },
           {
             urlPattern: /^https:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\//i,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/(firestore\.googleapis\.com|firebase\.googleapis\.com|identitytoolkit\.googleapis\.com|.*\.firebaseio\.com|.*\.firebasestorage\.app)\/.*/i,
             handler: 'NetworkOnly',
           },
           // 외부 API (OpenAI/Gemini/Google TTS) 는 절대 캐시 금지

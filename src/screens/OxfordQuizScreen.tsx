@@ -12,6 +12,7 @@ import {
 import { cn } from '../components/cn'
 import { t, type Lang } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import { isKoEnOxford, loadOxfordKoEnAll } from '../lib/oxfordApi'
 import { getOxfordFromCache, isOnline, onOnlineStatusChange } from '../lib/offlineCache'
 import {
   WRONG_ANSWERS_UPDATED_EVENT,
@@ -264,7 +265,10 @@ export function OxfordQuizScreen({
     const fetchAll = async () => {
       setAllOxfordLoading(true)
       try {
-        if (online && supabase) {
+        if (isKoEnOxford(targetLang)) {
+          const all = await loadOxfordKoEnAll()
+          if (!cancelled) setAllOxfordWords(all)
+        } else if (online && supabase) {
           const collected: OxfordRow[] = []
           const pageSize = 1000
           let page = 0
@@ -300,7 +304,7 @@ export function OxfordQuizScreen({
     return () => {
       cancelled = true
     }
-  }, [online])
+  }, [online, targetLang])
 
   // 사용자 단어를 OxfordRow 호환 형태로 매핑
   const userItemRows = useMemo(
