@@ -26,9 +26,12 @@ export const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${A
 export const APP_STORE_APP_ID = '6807980665'
 export const APP_STORE_URL = `https://apps.apple.com/app/id${APP_STORE_APP_ID}`
 
-/** 개인정보처리방침 / 데이터 삭제 요청 (Firebase Hosting) */
-export const PRIVACY_URL = 'https://jph-learn-korean.web.app/privacy'
-export const DELETE_DATA_URL = 'https://jph-learn-korean.web.app/delete-data'
+/** 공식 사이트 (Firebase Hosting). 커스텀 도메인 연결 후 SITE_URL만 바꾸면 된다. */
+export const SITE_URL = 'https://jhpenglish.web.app'
+
+/** 개인정보처리방침 / 데이터 삭제 요청 */
+export const PRIVACY_URL = `${SITE_URL}/privacy`
+export const DELETE_DATA_URL = `${SITE_URL}/delete-data`
 
 /** localStorage / IndexedDB 접두사 — 구 앱(kenya-vocab)과 분리 */
 export const STORAGE_PREFIX = 'oxford-en'

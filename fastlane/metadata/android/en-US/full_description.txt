@@ -19,6 +19,8 @@ Who it is for
 
 App identity
 
-• Name: Oxford English Words / 영어 단어장
+• Name: JHP English Words / JHP 영어 단어 암기
 • Package: com.jph.oxfordenglish
 • Direction: Korean → English
+
+Privacy: https://jhpenglish.web.app/privacy

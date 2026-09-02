@@ -19,6 +19,8 @@ Oxford 5000 기반 영어 단어를 한국어로 공부하는 단어장 앱입�
 
 앱 정보
 
-• 앱 이름: 영어 단어장
+• 앱 이름: JHP 영어 단어 암기
 • 패키지: com.jph.oxfordenglish
 • 학습 방향: 한국어 → 영어
+
+개인정보처리방침: https://jhpenglish.web.app/privacy
