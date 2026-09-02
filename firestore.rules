@@ -1,69 +1,32 @@
 rules_version = '2';
 service cloud.firestore {
-  // ===============================================================
-  // Assumed Data Model
-  // ===============================================================
-  //
-  // Collection: oxford_ko_en_chunks
-  // Document ID: chunk_00, chunk_01, ...
-  // Fields:
-  //   - index: number (required, >= 0, immutable) — chunk order
-  //   - items: list (required, <= 500) of Oxford 5000 word maps
-  //     Each item:
-  //       id, word, korean_meaning, level, pos, english_example,
-  //       korean_example, word_audio_url, meaning_audio_url,
-  //       english_example_audio_url, korean_example_audio_url,
-  //       image_url, order_index, category, difficulty,
-  //       word_pron_ko, created_at
-  //   Public educational dictionary (no PII). Clients never write.
-  //
-  // Collection: oxford_ko_en_meta
-  // Document ID: stats
-  // Fields:
-  //   - count: number
-  //   - chunkCount: number
-  //   - source: string
-  //   - updatedAt: timestamp | string
-  //
-  // All other paths: deny.
-  // Writes are Admin SDK only (bypasses rules). Client create/update/delete denied.
-  //
-  // ===============================================================
-
   match /databases/{database}/documents {
     function isAuthenticated() {
       return request.auth != null;
     }
-
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-
     function uidUnchanged() {
       return !('uid' in request.resource.data) ||
         request.resource.data.uid == request.auth.uid;
     }
-
     function uidNotModified() {
       return !('uid' in request.resource.data) ||
         request.resource.data.uid == resource.data.uid;
     }
-
     function hasRequiredFields(fields) {
       return request.resource.data.keys().hasAll(fields);
     }
-
     function hasOnlyAllowedFields(fields) {
       return request.resource.data.keys().hasOnly(fields);
     }
-
     function isValidChunk(data) {
       return hasOnlyAllowedFields(['index', 'items']) &&
         hasRequiredFields(['index', 'items']) &&
         data.index is int && data.index >= 0 && data.index < 100 &&
         data.items is list && data.items.size() > 0 && data.items.size() <= 500;
     }
-
     function isValidMeta(data) {
       return hasOnlyAllowedFields(['count', 'chunkCount', 'source', 'updatedAt']) &&
         hasRequiredFields(['count', 'chunkCount', 'source', 'updatedAt']) &&
@@ -71,23 +34,18 @@ service cloud.firestore {
         data.chunkCount is int && data.chunkCount >= 0 && data.chunkCount < 100 &&
         data.source is string && data.source.size() > 0 && data.source.size() < 200;
     }
-
     match /oxford_ko_en_chunks/{chunkId} {
-      // Public read: Oxford 5000 is a published learner word list (no PII),
-      // matching the existing unauthenticated SPA dictionary UX.
       allow read: if true;
       allow create: if false && isValidChunk(request.resource.data) && uidUnchanged();
-      allow update: if false && isValidChunk(request.resource.data) && uidNotModified() && isOwner('unused');
+      allow update: if false && isValidChunk(request.resource.data) && uidNotModified();
       allow delete: if false;
     }
-
     match /oxford_ko_en_meta/{docId} {
       allow read: if true;
       allow create: if false && isValidMeta(request.resource.data);
       allow update: if false && isValidMeta(request.resource.data);
       allow delete: if false;
     }
-
     match /{document=**} {
       allow read, write: if false;
     }
