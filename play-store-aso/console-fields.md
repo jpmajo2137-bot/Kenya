@@ -50,8 +50,17 @@ Full description: see `listings/ko-KR/full_description.txt` (mirrored in `../fas
 ## Graphics (uploaded via API)
 
 - Play icon + feature graphic + 7 phone screenshots (ko-KR / en-US)
-- App Store Connect: ko + en-US description/keywords/promo + iPhone 6.7" screenshots (7 each)
-- Regenerators: `scripts/capture-store-screens.mjs`, `scripts/compose-store-graphics.py`, `scripts/upload-store-listings.py`
+- App Store Connect: ko + en-US description/keywords/promo
+  - iPhone 6.7" screenshots (7 each) — COMPLETE
+  - **iPad 12.9" (`APP_IPAD_PRO_3GEN_129`) screenshots (7 each)** — COMPLETE
+- Price: **Free ($0)** via `appPriceSchedules`
+- Availability: all territories (`appAvailabilities` v2)
+- Regenerators: `scripts/capture-store-screens.mjs`, `scripts/compose-store-graphics.py`, `scripts/upload-store-listings.py`, `scripts/upload-ipad-screenshots.py`
+
+## Remaining Admin UI only
+
+- ASC App Privacy nutrition labels + tracking answers → see `ASC_REMAINING_ADMIN_UI.md`
+- Play App content forms (privacy policy form, ads, target audience, IARC) → see `PLAY_CONSOLE_REMAINING_UI.md`
 
 ## Recommended Play Console Classification
 
