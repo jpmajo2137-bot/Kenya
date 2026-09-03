@@ -61,15 +61,15 @@ export const WRONG_ANSWERS_UPDATED_EVENT = 'wrong-answers-updated'
 // 현재 언어 설정 가져오기
 function getCurrentMeaningLang(): Mode {
   try {
-    const stored = localStorage.getItem('k-kiswahili-app-v2')
+    const stored = localStorage.getItem('oxford-en.state')
     if (stored) {
       const parsed = JSON.parse(stored)
-      return parsed?.settings?.meaningLang || 'sw'
+      return parsed?.settings?.meaningLang || 'ko'
     }
   } catch {
     // ignore
   }
-  return 'sw'
+  return 'ko'
 }
 
 function getWrongAnswersKey(lang?: Mode): string {

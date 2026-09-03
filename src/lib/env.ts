@@ -12,6 +12,15 @@ export const env = {
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string | undefined,
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
 
+  // Firebase (한국어→영어 Oxford 5000)
+  firebaseApiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
+  firebaseAuthDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
+  firebaseProjectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
+  firebaseStorageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined,
+  firebaseMessagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined,
+  firebaseAppId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
+  firebaseUseEmulator: import.meta.env.VITE_FIREBASE_USE_EMULATOR === 'true',
+
   // 앱 공유 시크릿 (선택, Edge Function 추가 검증용 - 빌드 시 박힘)
   appSecret: import.meta.env.VITE_APP_SECRET as string | undefined,
 
@@ -30,6 +39,10 @@ export const env = {
 
 export function hasSupabase() {
   return Boolean(env.supabaseUrl && env.supabaseAnonKey)
+}
+
+export function hasFirebase() {
+  return Boolean(env.firebaseProjectId && (env.firebaseApiKey || env.firebaseUseEmulator))
 }
 
 /**

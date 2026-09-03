@@ -1,6 +1,8 @@
 import { Capacitor } from '@capacitor/core'
 
-const STORAGE_KEY = 'kenya-vocab.reviewPrompt'
+import { STORAGE_PREFIX } from './appIdentity'
+
+const STORAGE_KEY = `${STORAGE_PREFIX}.reviewPrompt`
 
 export const REVIEW_THRESHOLD_MS = 10 * 60 * 1000 // 10분
 

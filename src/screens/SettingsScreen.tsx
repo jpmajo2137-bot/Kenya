@@ -1,18 +1,11 @@
 import { useState } from 'react'
-import type { AppStateV3, NativeLang, TargetLang } from '../lib/types'
-import { LEARNABLE_BY_NATIVE } from '../lib/types'
+import type { AppStateV3 } from '../lib/types'
 import type { Action } from '../app/state'
 import { Button } from '../components/Button'
 import { useToast } from '../components/Toast'
 import { t, type Lang } from '../lib/i18n'
 import { resetConsentAndShowForm, getAdPersonalization } from '../lib/admob'
-
-const NATIVE_OPTIONS: NativeLang[] = ['ko', 'en', 'sw']
-const NATIVE_LABEL: Record<NativeLang, Record<Lang, string>> = {
-  ko: { sw: 'Kikorea', ko: '한국어', en: 'Korean' },
-  en: { sw: 'Kiingereza', ko: '영어', en: 'English' },
-  sw: { sw: 'Kiswahili', ko: '스와힐리어', en: 'Swahili' },
-}
+import { DELETE_DATA_URL, PRIVACY_URL, STORAGE_PREFIX } from '../lib/appIdentity'
 
 export function SettingsScreen({
   state,
@@ -34,8 +27,14 @@ export function SettingsScreen({
     if (!ok) return
     try {
       // 메인 앱 상태 삭제
-      localStorage.removeItem('kenya-vocab.state')
-      // 오답노트 데이터 삭제 (한국어/스와힐리어 버전)
+      localStorage.removeItem(`${STORAGE_PREFIX}.state`)
+      localStorage.removeItem(`${STORAGE_PREFIX}.hash`)
+      localStorage.removeItem(`${STORAGE_PREFIX}.encrypted`)
+      localStorage.removeItem(`${STORAGE_PREFIX}.key`)
+      localStorage.removeItem(`${STORAGE_PREFIX}.salt`)
+      localStorage.removeItem(`${STORAGE_PREFIX}.firstRun`)
+      localStorage.removeItem(`${STORAGE_PREFIX}.reviewPrompt`)
+      // 오답노트 데이터 삭제
       localStorage.removeItem('flashcard_wrong_answers_ko')
       localStorage.removeItem('flashcard_wrong_answers_sw')
       // 퀴즈 관련 설정 삭제 (보상형 광고 시청으로 부여된 30분 권한)
@@ -74,42 +73,6 @@ export function SettingsScreen({
             onChange={(e) => dispatch({ type: 'settings', patch: { showEnglish: e.target.checked } })}
           />
         </label>
-
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <div className="text-sm font-extrabold text-white">{t('nativeLangLabel', lang)}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {NATIVE_OPTIONS.map((nl) => (
-              <Button
-                key={nl}
-                variant={state.settings.nativeLang === nl ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => {
-                  const allowed = LEARNABLE_BY_NATIVE[nl]
-                  const targetLang: TargetLang = allowed.includes(state.settings.targetLang)
-                    ? state.settings.targetLang
-                    : allowed[0]
-                  dispatch({ type: 'settings', patch: { nativeLang: nl, targetLang } })
-                }}
-              >
-                {NATIVE_LABEL[nl][lang]}
-              </Button>
-            ))}
-          </div>
-
-          <div className="mt-4 text-sm font-extrabold text-white">{t('targetLangLabel', lang)}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {LEARNABLE_BY_NATIVE[state.settings.nativeLang].map((tl) => (
-              <Button
-                key={tl}
-                variant={state.settings.targetLang === tl ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => dispatch({ type: 'settings', patch: { targetLang: tl } })}
-              >
-                {NATIVE_LABEL[tl][lang]}
-              </Button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* 광고 설정 */}
@@ -160,7 +123,7 @@ export function SettingsScreen({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => window.open('https://k-kiswahili-words.com/delete-data', '_blank')}
+            onClick={() => window.open(DELETE_DATA_URL, '_blank')}
           >
             {lang === 'sw'
               ? '📋 Omba Kufuta Data'
@@ -183,7 +146,7 @@ export function SettingsScreen({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => window.open('https://k-kiswahili-words-59804.web.app/privacy', '_blank')}
+            onClick={() => window.open(PRIVACY_URL, '_blank')}
           >
             {lang === 'sw' ? '📋 Sera ya Faragha' : '📋 개인정보처리방침 보기'}
           </Button>

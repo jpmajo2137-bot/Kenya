@@ -2,7 +2,7 @@ export type Lang = 'sw' | 'ko' | 'en'
 
 const texts = {
   // App title
-  appTitle1: { sw: 'Learn Korean in English', ko: 'Learn Korean in English', en: 'Learn Korean in English' },
+  appTitle1: { sw: 'JHP English Words', ko: 'JHP 영어 단어 암기', en: 'JHP English Words' },
   appTitle2: { sw: '', ko: '', en: '' },
 
   // Default deck name

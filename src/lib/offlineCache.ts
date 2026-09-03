@@ -3,7 +3,7 @@
  * 캐시된 데이터 읽기 전용 (다운로드 기능 제거됨)
  */
 
-const DB_NAME = 'k-kiswahili-offline'
+const DB_NAME = 'oxford-en-offline'
 const DB_VERSION = 4
 const STORE_NAME = 'vocab'
 const META_STORE = 'meta'
@@ -169,6 +169,21 @@ export async function getOxfordCacheCount(
       resolve(data.length)
     }
     request.onerror = () => reject(request.error)
+  })
+}
+
+/**
+ * Oxford 5000 캐시에 행 저장 (Firebase / 번들 로드 후)
+ */
+export async function putOxfordCache(rows: CachedOxfordVocab[]): Promise<void> {
+  if (rows.length === 0) return
+  const db = await getDB()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(OXFORD_STORE, 'readwrite')
+    const store = tx.objectStore(OXFORD_STORE)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+    for (const row of rows) store.put(row)
   })
 }
 

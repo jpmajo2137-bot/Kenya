@@ -54,7 +54,7 @@
         <!-- AdMob App ID (필수!) -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-1454258737058608~5622229786"/>
+            android:value="ca-app-pub-1454258737058608~1336297195"/>
     </application>
 
     <!-- Permissions (최소 권한 원칙) -->

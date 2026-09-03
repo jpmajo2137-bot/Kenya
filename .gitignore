@@ -1,5 +1,5 @@
 # =========================================
-# K-Kiswahili-Words .gitignore
+# Oxford English Words (.gitignore)
 # =========================================
 
 # Secret-containing scripts
@@ -14,12 +14,19 @@ fix-word-output.txt
 .env.bak-*
 .env.full-backup-*
 
+# Firebase CLI cache
+.firebase/
+
 # API Keys & Credentials (중요!)
 gcp-tts-key.json
 *.keystore
 *.jks
 keystore/
-google-services.json
+# Firebase client configs are public; keep canonical copies under native-config/
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+!native-config/google-services.json
+!native-config/GoogleService-Info.plist
 
 # 안드로이드 서명 비밀번호 (keystore.properties)
 android/keystore.properties
@@ -103,3 +110,7 @@ workbox-*.js
 # Data files (선택적)
 data/# Zip files
 *.zip
+.secrets/
+android/keystore/
+*.p8
+!native-config/

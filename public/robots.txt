@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /private-dl/
+
+Sitemap: https://jhpenglish.web.app/sitemap.xml

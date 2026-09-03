@@ -1,9 +1,40 @@
 import { App as CapApp } from '@capacitor/app'
 
-// AdMob 설정
-const INTERSTITIAL_AD_UNIT_ID = 'ca-app-pub-1454258737058608/7937401936'
-const REWARDED_AD_UNIT_ID = 'ca-app-pub-1454258737058608/7355975678'
-const BANNER_AD_UNIT_ID = 'ca-app-pub-1454258737058608/1749267375'
+// AdMob — 플랫폼별 유닛 (com.jph.oxfordenglish)
+const AD_UNITS = {
+  android: {
+    appId: 'ca-app-pub-1454258737058608~1336297195',
+    banner: 'ca-app-pub-1454258737058608/9190736485',
+    interstitial: 'ca-app-pub-1454258737058608/7596629389',
+    rewarded: 'ca-app-pub-1454258737058608/4176259122',
+  },
+  ios: {
+    appId: 'ca-app-pub-1454258737058608~2816899828',
+    banner: 'ca-app-pub-1454258737058608/2457807178',
+    interstitial: 'ca-app-pub-1454258737058608/1550095788',
+    rewarded: 'ca-app-pub-1454258737058608/3657384374',
+  },
+} as const
+
+function getAdPlatform(): 'android' | 'ios' {
+  try {
+    const platform = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.()
+    if (platform === 'ios') return 'ios'
+  } catch {
+    // ignore
+  }
+  return 'android'
+}
+
+function getBannerAdUnitId(): string {
+  return AD_UNITS[getAdPlatform()].banner
+}
+function getInterstitialAdUnitId(): string {
+  return AD_UNITS[getAdPlatform()].interstitial
+}
+function getRewardedAdUnitId(): string {
+  return AD_UNITS[getAdPlatform()].rewarded
+}
 
 // 전면 광고 표시 간격: 4분마다 노출 시도
 // - 첫 실행: 시작 시각을 기준으로 4분 후 첫 광고 (시작 직후 광고 X → 첫인상 보호)
@@ -454,7 +485,7 @@ export async function prepareInterstitialAd(): Promise<void> {
     const options = getAdRequestOptions()
 
     await AdMob.prepareInterstitial({
-      adId: INTERSTITIAL_AD_UNIT_ID,
+      adId: getInterstitialAdUnitId(),
       isTesting: false,
       ...options,
     })
@@ -481,7 +512,7 @@ export async function prepareRewardedAd(): Promise<void> {
     const options = getAdRequestOptions()
 
     await AdMob.prepareRewardVideoAd({
-      adId: REWARDED_AD_UNIT_ID,
+      adId: getRewardedAdUnitId(),
       isTesting: false,
       ...options,
     })
@@ -689,7 +720,7 @@ export async function showBannerAd(): Promise<void> {
     }
 
     await AdMob.showBanner({
-      adId: BANNER_AD_UNIT_ID,
+      adId: getBannerAdUnitId(),
       adSize: BannerAdSize.ADAPTIVE_BANNER,
       position: BannerAdPosition.BOTTOM_CENTER,
       margin: 0,
@@ -750,7 +781,7 @@ export async function resumeBannerAd(reason: string = 'default'): Promise<void> 
       }
     }
     await AdMob.showBanner({
-      adId: BANNER_AD_UNIT_ID,
+      adId: getBannerAdUnitId(),
       adSize: BannerAdSize.ADAPTIVE_BANNER,
       position: BannerAdPosition.BOTTOM_CENTER,
       margin: 0,

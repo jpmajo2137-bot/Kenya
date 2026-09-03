@@ -1,5 +1,5 @@
 # =========================================
-# K-Kiswahili-Words ProGuard / R8 Rules
+# Oxford English Words (영어 단어장) ProGuard / R8 Rules
 # Capacitor 앱 호환 + 강화된 난독화
 # =========================================
 
@@ -79,7 +79,7 @@
 # =========================================
 # 3. 앱 메인 진입점만 유지 (나머지는 난독화)
 # =========================================
--keep class com.kenyavocab.app.MainActivity { *; }
+-keep class com.jph.oxfordenglish.MainActivity { *; }
 
 # Application 클래스 (있는 경우)
 -keep class * extends android.app.Application { *; }

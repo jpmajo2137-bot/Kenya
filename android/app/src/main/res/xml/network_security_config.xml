@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  K-Kiswahili-Words Network Security Configuration (RELEASE)
+  Oxford English Words Network Security Configuration (RELEASE)
   - 모든 cleartext 트래픽 완전 차단
   - 시스템 신뢰 인증서만 사용 (사용자 추가 CA 거부)
   - debug-overrides 로 개발 환경에서만 cleartext localhost 허용
