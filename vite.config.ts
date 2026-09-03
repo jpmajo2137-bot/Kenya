@@ -73,7 +73,7 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png', 'vite.svg'],
+      includeAssets: ['logo.png', 'pwa-192.png', 'pwa-512.png', 'pwa-512-maskable.png', 'vite.svg'],
       manifest: {
         name: 'JHP 영어 단어 암기',
         short_name: 'JHP 영어암기',
@@ -85,17 +85,17 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/logo.png',
+            src: '/pwa-192.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/logo.png',
+            src: '/pwa-512.png',
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: '/logo.png',
+            src: '/pwa-512-maskable.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

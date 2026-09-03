@@ -528,7 +528,7 @@ function AppInner() {
               <img
                 src="/logo.png"
                 alt={APP_TITLE}
-                className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover shrink-0"
+                className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-contain bg-white shrink-0"
               />
               <div className="app-title text-base sm:text-xl leading-tight truncate">
                 {APP_TITLE}
