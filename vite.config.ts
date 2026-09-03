@@ -77,7 +77,7 @@ export default defineConfig({
       manifest: {
         name: 'JHP 영어 단어 암기',
         short_name: 'JHP 영어암기',
-        description: 'JHP 영어 단어 암기 — Oxford 5000 영어 단어를 한국어로 공부하는 단어장.',
+        description: 'JHP 영어 단어 암기 — Oxford 5000 영어단어를 Day학습·퀴즈·오답노트·한영사전으로 매일 암기하세요.',
         theme_color: '#070a12',
         background_color: '#070a12',
         display: 'standalone',

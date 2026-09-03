@@ -1,29 +1,30 @@
-# Play Store ASO Metadata
+# Play / App Store ASO assets — JHP 영어 단어 암기
 
-Prepared for the app at `http://localhost:5173/`.
+## Listings
 
-Observed app positioning:
+- `listings/ko-KR/` · `listings/en-US/` — Play title / short / full description
+- `../fastlane/metadata/android/` — same Play copy (fastlane mirror)
+- `../fastlane/metadata/ios/` — App Store name, subtitle, keywords, promo, description
 
-- Four language pairs: English → Korean, Korean → English, Swahili/Kiswahili → Korean, Korean → Swahili/Kiswahili
-- Core features: wordbook, dictionary, Hangul, audio pronunciation, quiz, wrong notes
-- Vocabulary depth shown in app: about 4,988 all words, with beginner/elementary/intermediate/advanced and topic decks
-- Important ASO terms used naturally: learn Korean, Korean vocabulary, Hangul, Korean pronunciation, Korean dictionary, English vocabulary, Korean English dictionary, Swahili Korean, Kiswahili, flashcards, quiz, wrong notes
+## Graphics
 
-Files ready for Play Console or fastlane supply:
+- `icon-512.png` — Play store icon
+- `feature-graphic.png` — Play feature graphic (1024×500)
+- `screenshots/phone/{ko-KR,en-US}/` — Play phone screenshots (1080×1920)
+- `screenshots/iphone67/{ko,en-US}/` — App Store iPhone 6.7" (1290×2796)
+- `screenshots/raw/` — source device captures
 
-- `fastlane/metadata/android/en-US/title.txt`
-- `fastlane/metadata/android/en-US/short_description.txt`
-- `fastlane/metadata/android/en-US/full_description.txt`
-- `fastlane/metadata/android/ko-KR/title.txt`
-- `fastlane/metadata/android/ko-KR/short_description.txt`
-- `fastlane/metadata/android/ko-KR/full_description.txt`
-- `fastlane/metadata/android/sw/title.txt`
-- `fastlane/metadata/android/sw/short_description.txt`
-- `fastlane/metadata/android/sw/full_description.txt`
+## Regenerate / upload
 
-Notes:
+```bash
+# 1) Capture UI (dev server on :5173)
+node scripts/capture-store-screens.mjs
 
-- Google Play does not provide a separate keyword field. Keywords are placed in title, short description and full description.
-- Avoiding unnatural keyword stuffing is intentional. Google Play can reject or downrank spammy repeated keyword blocks.
-- I did not claim offline learning because the app currently shows that it requires an internet connection.
-- I did not use the Oxford brand in store copy because that can create trademark/licensing risk unless you have explicit rights.
+# 2) Compose marketing frames + feature graphic
+python3 scripts/compose-store-graphics.py
+
+# 3) Upload to Play Console + App Store Connect
+python3 scripts/upload-store-listings.py
+```
+
+Requires `.secrets/play-service-account.json` and `.secrets/apple.env`.

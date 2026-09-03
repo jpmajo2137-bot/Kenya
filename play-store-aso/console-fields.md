@@ -35,17 +35,23 @@ SSL용 `_acme-challenge` TXT는 인증서 발급 시 Firebase 콘솔에 표시�
 
 Title: JHP English Words
 
-Short description: Study Oxford 5000 English words with Korean meanings, quizzes, and review.
+Short description: Oxford 5000 English words + Korean meanings. Day study, quizzes & wrong notes.
 
-Full description: see `../fastlane/metadata/android/en-US/full_description.txt`
+Full description: see `listings/en-US/full_description.txt` (mirrored in `../fastlane/metadata/android/en-US/`)
 
 ## ko-KR
 
 Title: JHP 영어 단어 암기
 
-Short description: Oxford 5000 영어 단어를 Day별 학습, 퀴즈, 오답노트, 사전으로 공부하세요.
+Short description: Oxford 5000 영단어 암기앱 — Day학습, 퀴즈, 오답노트, 한영사전, 수능·토익 대비
 
-Full description: see `../fastlane/metadata/android/ko-KR/full_description.txt`
+Full description: see `listings/ko-KR/full_description.txt` (mirrored in `../fastlane/metadata/android/ko-KR/`)
+
+## Graphics (uploaded via API)
+
+- Play icon + feature graphic + 7 phone screenshots (ko-KR / en-US)
+- App Store Connect: ko + en-US description/keywords/promo + iPhone 6.7" screenshots (7 each)
+- Regenerators: `scripts/capture-store-screens.mjs`, `scripts/compose-store-graphics.py`, `scripts/upload-store-listings.py`
 
 ## Recommended Play Console Classification
 
